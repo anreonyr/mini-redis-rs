@@ -19,7 +19,7 @@ impl RespType {
             RespType::Integer(i) => format!(":{}\r\n", i).into_bytes(),
             RespType::BulkString(Some(data)) => {
                 let mut buf = Vec::new();
-                // buf.extend_from_slice(format!("${}\r\n", data.len()).as_bytes());
+                buf.extend_from_slice(format!("${}\r\n", data.len()).as_bytes());
                 buf.extend_from_slice(data);
                 buf.extend_from_slice(b"\r\n");
                 buf
