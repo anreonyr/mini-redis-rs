@@ -4,7 +4,8 @@
       "Bash(cargo test *)",
       "Bash(cargo build *)",
       "Bash(taskkill /f /im codecrafters-redis.exe)",
-      "Bash(cargo check *)"
+      "Bash(cargo check *)",
+      "Bash(rustc --version)"
     ]
   }
 }

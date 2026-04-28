@@ -1,8 +1,13 @@
 mod resp;
 
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+
 use anyhow::Context;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+
+static DB: LazyLock<Mutex<HashMap<String, Vec<u8>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -157,6 +162,39 @@ async fn dispatch_command(
                     .write_all(&err.serialize())
                     .await
                     .context("failed to write error response")?;
+            }
+        }
+        "SET" => {
+            if args.len() < 2 {
+                let err = resp::RespType::Error(
+                    "ERR wrong number of arguments for 'set' command".to_string(),
+                );
+                stream.write_all(&err.serialize()).await?;
+            } else {
+                {
+                    let mut db = DB.lock().unwrap();
+                    db.insert(args[0].clone(), args[1].as_bytes().to_vec());
+                }
+                let response = resp::RespType::SimpleString("OK".to_string());
+                stream.write_all(&response.serialize()).await?;
+            }
+        }
+        "GET" => {
+            if let Some(key) = args.first() {
+                let value = {
+                    let db = DB.lock().unwrap();
+                    db.get(key).cloned()
+                };
+                let response = match value {
+                    Some(v) => resp::RespType::BulkString(Some(v)),
+                    None => resp::RespType::BulkString(None),
+                };
+                stream.write_all(&response.serialize()).await?;
+            } else {
+                let err = resp::RespType::Error(
+                    "ERR wrong number of arguments for 'get' command".to_string(),
+                );
+                stream.write_all(&err.serialize()).await?;
             }
         }
         _ => {
