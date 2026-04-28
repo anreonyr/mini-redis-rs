@@ -1,32 +1,171 @@
+mod resp;
+
+use anyhow::Context;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 #[tokio::main]
-async fn main() {
-    let listener = TcpListener::bind("127.0.0.1:6379").await.unwrap();
+async fn main() -> anyhow::Result<()> {
+    let listener = TcpListener::bind("127.0.0.1:6379")
+        .await
+        .context("failed to bind to 127.0.0.1:6379")?;
 
     loop {
-        let stream = listener.accept().await;
+        let (stream, _) = listener
+            .accept()
+            .await
+            .context("failed to accept connection")?;
+        println!("accepted new connection");
 
-        match stream {
-            Ok((mut stream, _)) => {
-                println!("accepted new connection");
-
-                tokio::spawn(async move {
-                    let mut buf = [0; 512];
-                    loop {
-                        let read_count = stream.read(&mut buf).await.unwrap();
-                        if read_count == 0 {
-                            break;
-                        }
-
-                        stream.write(b"+PONG\r\n").await.unwrap();
-                    }
-                });
+        tokio::spawn(async move {
+            if let Err(e) = handle_connection(stream).await {
+                eprintln!("connection error: {:#}", e);
             }
-            Err(e) => {
-                println!("error: {}", e);
+        });
+    }
+}
+
+async fn handle_connection(mut stream: tokio::net::TcpStream) -> anyhow::Result<()> {
+    let decoder = resp::Decoder::new();
+    let mut read_buf = [0u8; 512];
+    let mut pending = Vec::new();
+    let mut inline_mode = false;
+
+    loop {
+        let n = stream
+            .read(&mut read_buf)
+            .await
+            .context("failed to read from stream")?;
+
+        if n == 0 {
+            return Ok(());
+        }
+
+        // 检测模式：pending 为空时根据首字节判断
+        if pending.is_empty() {
+            inline_mode = !matches!(read_buf[0], b'+' | b'-' | b':' | b'$' | b'*');
+        }
+
+        pending.extend_from_slice(&read_buf[..n]);
+
+        if inline_mode {
+            process_inline(&mut pending, &mut stream).await?;
+        } else {
+            process_resp(&decoder, &mut pending, &mut stream).await?;
+        }
+    }
+}
+
+async fn process_inline(
+    pending: &mut Vec<u8>,
+    stream: &mut tokio::net::TcpStream,
+) -> anyhow::Result<()> {
+    while let Some(pos) = pending.windows(2).position(|w| w == b"\r\n") {
+        let line = String::from_utf8_lossy(&pending[..pos]).trim().to_string();
+        pending.drain(..pos + 2);
+
+        if line.is_empty() {
+            continue;
+        }
+
+        println!("received inline: {}", line);
+
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        let cmd = parts[0].to_uppercase();
+        let args: Vec<String> = parts[1..].iter().map(|s| s.to_string()).collect();
+        dispatch_command(&cmd, &args, stream).await?;
+    }
+    Ok(())
+}
+
+async fn process_resp(
+    decoder: &resp::Decoder,
+    pending: &mut Vec<u8>,
+    stream: &mut tokio::net::TcpStream,
+) -> anyhow::Result<()> {
+    loop {
+        match decoder.decode(pending) {
+            Ok((frame, consumed)) => {
+                pending.drain(..consumed);
+                println!("received: {}", frame);
+
+                if let resp::RespType::Array(Some(items)) = &frame {
+                    let cmd = items.first().and_then(|v| {
+                        if let resp::RespType::BulkString(Some(bytes)) = v {
+                            Some(bytes.as_slice())
+                        } else {
+                            None
+                        }
+                    });
+
+                    if let Some(cmd) = cmd {
+                        let cmd_str = String::from_utf8_lossy(cmd).to_uppercase();
+                        let args: Vec<String> = items[1..]
+                            .iter()
+                            .filter_map(|v| {
+                                if let resp::RespType::BulkString(Some(bytes)) = v {
+                                    Some(String::from_utf8_lossy(bytes).to_string())
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect();
+                        dispatch_command(&cmd_str, &args, stream).await?;
+                    }
+                }
+            }
+            Err(resp::DecodeError::Incomplete) => break,
+            Err(resp::DecodeError::Invalid(e)) => {
+                eprintln!("decode error: {}", e);
+                let err = resp::RespType::Error(format!("ERR protocol error: {}", e));
+                stream
+                    .write_all(&err.serialize())
+                    .await
+                    .context("failed to write protocol error response")?;
+                return Ok(());
             }
         }
     }
+    Ok(())
+}
+
+async fn dispatch_command(
+    cmd: &str,
+    args: &[String],
+    stream: &mut tokio::net::TcpStream,
+) -> anyhow::Result<()> {
+    match cmd {
+        "PING" => {
+            let response = resp::RespType::SimpleString("PONG".to_string());
+            stream
+                .write_all(&response.serialize())
+                .await
+                .context("failed to write PONG response")?;
+        }
+        "ECHO" => {
+            if let Some(arg) = args.first() {
+                let response = resp::RespType::BulkString(Some(arg.as_bytes().to_vec()));
+                stream
+                    .write_all(&response.serialize())
+                    .await
+                    .context("failed to write ECHO response")?;
+            } else {
+                let err = resp::RespType::Error(
+                    "ERR wrong number of arguments for 'echo' command".to_string(),
+                );
+                stream
+                    .write_all(&err.serialize())
+                    .await
+                    .context("failed to write error response")?;
+            }
+        }
+        _ => {
+            let err = resp::RespType::Error("ERR unknown command".to_string());
+            stream
+                .write_all(&err.serialize())
+                .await
+                .context("failed to write error response")?;
+        }
+    }
+    Ok(())
 }

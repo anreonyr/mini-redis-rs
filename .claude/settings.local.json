@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo test *)",
+      "Bash(cargo build *)",
+      "Bash(taskkill /f /im codecrafters-redis.exe)",
+      "Bash(cargo check *)"
+    ]
+  }
+}
