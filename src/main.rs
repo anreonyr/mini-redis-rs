@@ -12,19 +12,34 @@ use tokio::time::Instant;
 static DB: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Clone, Debug, PartialEq)]
+enum Value {
+    String(Vec<u8>),
+    List(Vec<Vec<u8>>),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 struct Entry {
-    value: Vec<u8>,
+    value: Value,
     expiry: Option<Instant>,
 }
 
 impl Entry {
-    fn new(value: Vec<u8>, expiry: Option<Instant>) -> Self {
+    fn new(value: Value, expiry: Option<Instant>) -> Self {
         Self { value, expiry }
     }
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // 后台每秒扫描过期 key
+    tokio::spawn(async {
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            let mut db = DB.lock().unwrap();
+            db.retain(|_, entry| !entry.expiry.is_some_and(|exp| Instant::now() >= exp));
+        }
+    });
+
     let listener = TcpListener::bind("127.0.0.1:6379")
         .await
         .context("failed to bind to 127.0.0.1:6379")?;
@@ -184,7 +199,7 @@ async fn dispatch_command(
                     let mut db = DB.lock().unwrap();
                     db.insert(
                         args[0].clone(),
-                        Entry::new(args[1].as_bytes().to_vec(), None),
+                        Entry::new(Value::String(args[1].as_bytes().to_vec()), None),
                     );
                 }
                 let response = resp::RespType::SimpleString("OK".to_string());
@@ -195,7 +210,7 @@ async fn dispatch_command(
                     db.insert(
                         args[0].clone(),
                         Entry::new(
-                            args[1].as_bytes().to_vec(),
+                            Value::String(args[1].as_bytes().to_vec()),
                             Some(
                                 Instant::now()
                                     + if args[2] == "PX" {
@@ -235,13 +250,47 @@ async fn dispatch_command(
                     }
                 };
                 let response = match value {
-                    Some(v) => resp::RespType::BulkString(Some(v)),
+                    Some(v) => resp::RespType::BulkString(match v {
+                        Value::String(u) => Some(u),
+                        _ => unreachable!(),
+                    }),
                     None => resp::RespType::BulkString(None),
                 };
                 stream.write_all(&response.serialize()).await?;
             } else {
                 let err = resp::RespType::Error(
                     "ERR wrong number of arguments for 'get' command".to_string(),
+                );
+                stream.write_all(&err.serialize()).await?;
+            }
+        }
+        "RPUSH" => {
+            if args.len() == 2 {
+                let (key, value) = (args[0].clone(), args[1].as_bytes().to_vec());
+                let response = {
+                    let mut db = DB.lock().unwrap();
+                    match db.get_mut(&key) {
+                        Some(entry) => {
+                            if let Value::List(ref mut list) = entry.value {
+                                list.push(value);
+                                resp::RespType::Integer(list.len() as i64)
+                            } else {
+                                resp::RespType::Error(
+                                    "WRONGTYPE Operation against a key holding the wrong kind of value"
+                                        .to_string(),
+                                )
+                            }
+                        }
+                        None => {
+                            db.insert(key, Entry::new(Value::List(vec![value]), None));
+                            resp::RespType::Integer(1)
+                        }
+                    }
+                }; // lock dropped here
+                stream.write_all(&response.serialize()).await?;
+            } else {
+                let err = resp::RespType::Error(
+                    "ERR wrong number of arguments for 'rpush' command".to_string(),
                 );
                 stream.write_all(&err.serialize()).await?;
             }
