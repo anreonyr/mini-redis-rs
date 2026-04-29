@@ -265,14 +265,16 @@ async fn dispatch_command(
             }
         }
         "RPUSH" => {
-            if args.len() == 2 {
-                let (key, value) = (args[0].clone(), args[1].as_bytes().to_vec());
+            if args.len() >= 2 {
+                let (key, values) = (args[0].clone(), &args[1..]);
                 let response = {
                     let mut db = DB.lock().unwrap();
                     match db.get_mut(&key) {
                         Some(entry) => {
                             if let Value::List(ref mut list) = entry.value {
-                                list.push(value);
+                                for v in values {
+                                    list.push(v.as_bytes().to_vec());
+                                }
                                 resp::RespType::Integer(list.len() as i64)
                             } else {
                                 resp::RespType::Error(
@@ -282,7 +284,15 @@ async fn dispatch_command(
                             }
                         }
                         None => {
-                            db.insert(key, Entry::new(Value::List(vec![value]), None));
+                            db.insert(
+                                key,
+                                Entry::new(
+                                    Value::List(
+                                        values.iter().map(|v| v.as_bytes().to_vec()).collect(),
+                                    ),
+                                    None,
+                                ),
+                            );
                             resp::RespType::Integer(1)
                         }
                     }
