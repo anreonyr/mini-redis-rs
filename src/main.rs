@@ -2,12 +2,26 @@ mod resp;
 
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
+use std::time::Duration;
 
 use anyhow::Context;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::time::Instant;
 
-static DB: LazyLock<Mutex<HashMap<String, Vec<u8>>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static DB: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+
+#[derive(Clone, Debug, PartialEq)]
+struct Entry {
+    value: Vec<u8>,
+    expiry: Option<Instant>,
+}
+
+impl Entry {
+    fn new(value: Vec<u8>, expiry: Option<Instant>) -> Self {
+        Self { value, expiry }
+    }
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -165,25 +179,60 @@ async fn dispatch_command(
             }
         }
         "SET" => {
-            if args.len() < 2 {
+            if args.len() == 2 {
+                {
+                    let mut db = DB.lock().unwrap();
+                    db.insert(
+                        args[0].clone(),
+                        Entry::new(args[1].as_bytes().to_vec(), None),
+                    );
+                }
+                let response = resp::RespType::SimpleString("OK".to_string());
+                stream.write_all(&response.serialize()).await?;
+            } else if args.len() == 4 {
+                {
+                    let mut db = DB.lock().unwrap();
+                    db.insert(
+                        args[0].clone(),
+                        Entry::new(
+                            args[1].as_bytes().to_vec(),
+                            Some(
+                                Instant::now()
+                                    + if args[2] == "PX" {
+                                        Duration::from_millis(args[3].parse::<u64>()?)
+                                    } else if args[2] == "EX" {
+                                        Duration::from_secs(args[3].parse::<u64>()?)
+                                    } else {
+                                        Duration::ZERO
+                                    },
+                            ),
+                        ),
+                    );
+                }
+                let response = resp::RespType::SimpleString("OK".to_string());
+                stream.write_all(&response.serialize()).await?;
+            } else {
                 let err = resp::RespType::Error(
                     "ERR wrong number of arguments for 'set' command".to_string(),
                 );
                 stream.write_all(&err.serialize()).await?;
-            } else {
-                {
-                    let mut db = DB.lock().unwrap();
-                    db.insert(args[0].clone(), args[1].as_bytes().to_vec());
-                }
-                let response = resp::RespType::SimpleString("OK".to_string());
-                stream.write_all(&response.serialize()).await?;
             }
         }
         "GET" => {
             if let Some(key) = args.first() {
                 let value = {
-                    let db = DB.lock().unwrap();
-                    db.get(key).cloned()
+                    let mut db = DB.lock().unwrap();
+                    match db.get(key) {
+                        Some(entry) => {
+                            if entry.expiry.is_some_and(|exp| Instant::now() >= exp) {
+                                db.remove(key);
+                                None
+                            } else {
+                                Some(entry.value.clone())
+                            }
+                        }
+                        None => None,
+                    }
                 };
                 let response = match value {
                     Some(v) => resp::RespType::BulkString(Some(v)),
