@@ -293,7 +293,7 @@ async fn dispatch_command(
                                     None,
                                 ),
                             );
-                            resp::RespType::Integer(1)
+                            resp::RespType::Integer(values.len() as i64)
                         }
                     }
                 }; // lock dropped here
