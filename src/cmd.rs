@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::time::Duration;
 use tokio::time::Instant;
 
@@ -50,6 +51,7 @@ pub fn dispatch_command(cmd: &str, args: &[String]) -> resp::RespType {
         "SET" => handle_set(args),
         "GET" => handle_get(args),
         "RPUSH" => handle_rpush(args),
+        "LPUSH" => handle_lpush(args),
         "LRANGE" => handle_lrange(args),
         _ => return resp::RespType::Error("ERR unknown command".to_string()),
     })
@@ -130,12 +132,39 @@ fn handle_get(args: &[String]) -> anyhow::Result<resp::RespType> {
 
 fn handle_rpush(args: &[String]) -> anyhow::Result<resp::RespType> {
     if args.len() >= 2 {
-        let values: Vec<Vec<u8>> = args[1..].iter().map(|v| v.as_bytes().to_vec()).collect();
+        let values: VecDeque<Vec<u8>> = args[1..].iter().map(|v| v.as_bytes().to_vec()).collect();
         let key = args[0].clone();
         Ok(with_db(|db| match db.get_mut(&key) {
             Some(entry) => {
                 if let Value::List(ref mut list) = entry.value {
                     list.extend(values);
+                    resp::RespType::Integer(list.len() as i64)
+                } else {
+                    resp::RespType::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    )
+                }
+            }
+            None => {
+                let len = values.len();
+                db.insert(key, Entry::new(Value::List(values), None));
+                resp::RespType::Integer(len as i64)
+            }
+        }))
+    } else {
+        Err(wrong_arg_count("rpush").into())
+    }
+}
+
+fn handle_lpush(args: &[String]) -> anyhow::Result<resp::RespType> {
+    if args.len() >= 2 {
+        let values: VecDeque<Vec<u8>> = args[1..].iter().map(|v| v.as_bytes().to_vec()).collect();
+        let key = args[0].clone();
+        Ok(with_db(|db| match db.get_mut(&key) {
+            Some(entry) => {
+                if let Value::List(ref mut list) = entry.value {
+                    list.extend_front(values);
                     resp::RespType::Integer(list.len() as i64)
                 } else {
                     resp::RespType::Error(
@@ -188,8 +217,8 @@ fn handle_lrange(args: &[String]) -> anyhow::Result<resp::RespType> {
                     if l > r {
                         resp::RespType::Array(Some(vec![]))
                     } else {
-                        let items: Vec<resp::RespType> = list[l as usize..=r as usize]
-                            .iter()
+                        let items: Vec<resp::RespType> = list
+                            .range(l as usize..=r as usize)
                             .map(|v| resp::RespType::BulkString(Some(v.clone())))
                             .collect();
                         resp::RespType::Array(Some(items))

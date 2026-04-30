@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{LazyLock, Mutex};
 use tokio::time::Instant;
 
@@ -7,7 +7,7 @@ static DB: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(|| Mutex::new
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     String(Vec<u8>),
-    List(Vec<Vec<u8>>),
+    List(VecDeque<Vec<u8>>),
 }
 
 #[derive(Clone, Debug, PartialEq)]

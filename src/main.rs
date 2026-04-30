@@ -1,3 +1,5 @@
+#![feature(deque_extend_front)]
+
 mod cmd;
 mod db;
 mod resp;
