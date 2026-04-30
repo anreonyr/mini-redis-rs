@@ -1,48 +1,28 @@
+mod cmd;
+mod db;
 mod resp;
 
-use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
+use tokio::time::Instant;
 
 use anyhow::Context;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
-use tokio::time::Instant;
-
-static DB: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
-
-#[derive(Clone, Debug, PartialEq)]
-enum Value {
-    String(Vec<u8>),
-    List(Vec<Vec<u8>>),
-}
-
-#[derive(Clone, Debug, PartialEq)]
-struct Entry {
-    value: Value,
-    expiry: Option<Instant>,
-}
-
-impl Entry {
-    fn new(value: Value, expiry: Option<Instant>) -> Self {
-        Self { value, expiry }
-    }
-}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // 后台每秒扫描过期 key
-    tokio::spawn(async {
-        loop {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            let mut db = DB.lock().unwrap();
-            db.retain(|_, entry| !entry.expiry.is_some_and(|exp| Instant::now() >= exp));
-        }
-    });
-
     let listener = TcpListener::bind("127.0.0.1:6379")
         .await
         .context("failed to bind to 127.0.0.1:6379")?;
+
+    tokio::spawn(async {
+        loop {
+            tokio::time::sleep(Duration::from_secs(1)).await;
+            db::with_db(|db| {
+                db.retain(|_, entry| !entry.expiry.is_some_and(|exp| Instant::now() >= exp));
+            });
+        }
+    });
 
     loop {
         let (stream, _) = listener
@@ -61,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
 
 async fn handle_connection(mut stream: tokio::net::TcpStream) -> anyhow::Result<()> {
     let decoder = resp::Decoder::new();
-    let mut read_buf = [0u8; 512];
+    let mut read_buf = [0u8; 8192];
     let mut pending = Vec::new();
     let mut inline_mode = false;
 
@@ -75,7 +55,6 @@ async fn handle_connection(mut stream: tokio::net::TcpStream) -> anyhow::Result<
             return Ok(());
         }
 
-        // 检测模式：pending 为空时根据首字节判断
         if pending.is_empty() {
             inline_mode = !matches!(read_buf[0], b'+' | b'-' | b':' | b'$' | b'*');
         }
@@ -107,7 +86,8 @@ async fn process_inline(
         let parts: Vec<&str> = line.split_whitespace().collect();
         let cmd = parts[0].to_uppercase();
         let args: Vec<String> = parts[1..].iter().map(|s| s.to_string()).collect();
-        dispatch_command(&cmd, &args, stream).await?;
+        let response = cmd::dispatch_command(&cmd, &args);
+        send_response(stream, &response).await?;
     }
     Ok(())
 }
@@ -123,39 +103,16 @@ async fn process_resp(
                 pending.drain(..consumed);
                 println!("received: {}", frame);
 
-                if let resp::RespType::Array(Some(items)) = &frame {
-                    let cmd = items.first().and_then(|v| {
-                        if let resp::RespType::BulkString(Some(bytes)) = v {
-                            Some(bytes.as_slice())
-                        } else {
-                            None
-                        }
-                    });
-
-                    if let Some(cmd) = cmd {
-                        let cmd_str = String::from_utf8_lossy(cmd).to_uppercase();
-                        let args: Vec<String> = items[1..]
-                            .iter()
-                            .filter_map(|v| {
-                                if let resp::RespType::BulkString(Some(bytes)) = v {
-                                    Some(String::from_utf8_lossy(bytes).to_string())
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect();
-                        dispatch_command(&cmd_str, &args, stream).await?;
-                    }
+                if let Some((cmd, args)) = cmd::parse_command(&frame) {
+                    let response = cmd::dispatch_command(&cmd, &args);
+                    send_response(stream, &response).await?;
                 }
             }
             Err(resp::DecodeError::Incomplete) => break,
             Err(resp::DecodeError::Invalid(e)) => {
                 eprintln!("decode error: {}", e);
                 let err = resp::RespType::Error(format!("ERR protocol error: {}", e));
-                stream
-                    .write_all(&err.serialize())
-                    .await
-                    .context("failed to write protocol error response")?;
+                send_response(stream, &err).await?;
                 return Ok(());
             }
         }
@@ -163,155 +120,12 @@ async fn process_resp(
     Ok(())
 }
 
-async fn dispatch_command(
-    cmd: &str,
-    args: &[String],
+async fn send_response(
     stream: &mut tokio::net::TcpStream,
+    response: &resp::RespType,
 ) -> anyhow::Result<()> {
-    match cmd {
-        "PING" => {
-            let response = resp::RespType::SimpleString("PONG".to_string());
-            stream
-                .write_all(&response.serialize())
-                .await
-                .context("failed to write PONG response")?;
-        }
-        "ECHO" => {
-            if let Some(arg) = args.first() {
-                let response = resp::RespType::BulkString(Some(arg.as_bytes().to_vec()));
-                stream
-                    .write_all(&response.serialize())
-                    .await
-                    .context("failed to write ECHO response")?;
-            } else {
-                let err = resp::RespType::Error(
-                    "ERR wrong number of arguments for 'echo' command".to_string(),
-                );
-                stream
-                    .write_all(&err.serialize())
-                    .await
-                    .context("failed to write error response")?;
-            }
-        }
-        "SET" => {
-            if args.len() == 2 {
-                {
-                    let mut db = DB.lock().unwrap();
-                    db.insert(
-                        args[0].clone(),
-                        Entry::new(Value::String(args[1].as_bytes().to_vec()), None),
-                    );
-                }
-                let response = resp::RespType::SimpleString("OK".to_string());
-                stream.write_all(&response.serialize()).await?;
-            } else if args.len() == 4 {
-                {
-                    let mut db = DB.lock().unwrap();
-                    db.insert(
-                        args[0].clone(),
-                        Entry::new(
-                            Value::String(args[1].as_bytes().to_vec()),
-                            Some(
-                                Instant::now()
-                                    + if args[2] == "PX" {
-                                        Duration::from_millis(args[3].parse::<u64>()?)
-                                    } else if args[2] == "EX" {
-                                        Duration::from_secs(args[3].parse::<u64>()?)
-                                    } else {
-                                        Duration::ZERO
-                                    },
-                            ),
-                        ),
-                    );
-                }
-                let response = resp::RespType::SimpleString("OK".to_string());
-                stream.write_all(&response.serialize()).await?;
-            } else {
-                let err = resp::RespType::Error(
-                    "ERR wrong number of arguments for 'set' command".to_string(),
-                );
-                stream.write_all(&err.serialize()).await?;
-            }
-        }
-        "GET" => {
-            if let Some(key) = args.first() {
-                let value = {
-                    let mut db = DB.lock().unwrap();
-                    match db.get(key) {
-                        Some(entry) => {
-                            if entry.expiry.is_some_and(|exp| Instant::now() >= exp) {
-                                db.remove(key);
-                                None
-                            } else {
-                                Some(entry.value.clone())
-                            }
-                        }
-                        None => None,
-                    }
-                };
-                let response = match value {
-                    Some(v) => resp::RespType::BulkString(match v {
-                        Value::String(u) => Some(u),
-                        _ => unreachable!(),
-                    }),
-                    None => resp::RespType::BulkString(None),
-                };
-                stream.write_all(&response.serialize()).await?;
-            } else {
-                let err = resp::RespType::Error(
-                    "ERR wrong number of arguments for 'get' command".to_string(),
-                );
-                stream.write_all(&err.serialize()).await?;
-            }
-        }
-        "RPUSH" => {
-            if args.len() >= 2 {
-                let (key, values) = (args[0].clone(), &args[1..]);
-                let response = {
-                    let mut db = DB.lock().unwrap();
-                    match db.get_mut(&key) {
-                        Some(entry) => {
-                            if let Value::List(ref mut list) = entry.value {
-                                for v in values {
-                                    list.push(v.as_bytes().to_vec());
-                                }
-                                resp::RespType::Integer(list.len() as i64)
-                            } else {
-                                resp::RespType::Error(
-                                    "WRONGTYPE Operation against a key holding the wrong kind of value"
-                                        .to_string(),
-                                )
-                            }
-                        }
-                        None => {
-                            db.insert(
-                                key,
-                                Entry::new(
-                                    Value::List(
-                                        values.iter().map(|v| v.as_bytes().to_vec()).collect(),
-                                    ),
-                                    None,
-                                ),
-                            );
-                            resp::RespType::Integer(values.len() as i64)
-                        }
-                    }
-                }; // lock dropped here
-                stream.write_all(&response.serialize()).await?;
-            } else {
-                let err = resp::RespType::Error(
-                    "ERR wrong number of arguments for 'rpush' command".to_string(),
-                );
-                stream.write_all(&err.serialize()).await?;
-            }
-        }
-        _ => {
-            let err = resp::RespType::Error("ERR unknown command".to_string());
-            stream
-                .write_all(&err.serialize())
-                .await
-                .context("failed to write error response")?;
-        }
-    }
-    Ok(())
+    stream
+        .write_all(&response.serialize())
+        .await
+        .context("failed to write response")
 }
