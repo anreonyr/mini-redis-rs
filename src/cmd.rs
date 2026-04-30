@@ -186,7 +186,7 @@ fn handle_lrange(args: &[String]) -> anyhow::Result<resp::RespType> {
                     }
 
                     if l > r {
-                        resp::RespType::Array(None)
+                        resp::RespType::Array(Some(vec![]))
                     } else {
                         let items: Vec<resp::RespType> = list[l as usize..=r as usize]
                             .iter()
@@ -199,7 +199,7 @@ fn handle_lrange(args: &[String]) -> anyhow::Result<resp::RespType> {
                     "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
                 ),
             },
-            None => resp::RespType::Array(None),
+            None => resp::RespType::Array(Some(vec![])),
         }))
     } else {
         Err(wrong_arg_count("lrange").into())
