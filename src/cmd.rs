@@ -164,7 +164,9 @@ fn handle_lpush(args: &[String]) -> anyhow::Result<resp::RespType> {
         Ok(with_db(|db| match db.get_mut(&key) {
             Some(entry) => {
                 if let Value::List(ref mut list) = entry.value {
-                    list.extend_front(values);
+                    for v in values.into_iter().rev() {
+                        list.push_front(v);
+                    }
                     resp::RespType::Integer(list.len() as i64)
                 } else {
                     resp::RespType::Error(
