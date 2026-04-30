@@ -182,7 +182,7 @@ fn handle_lpush(args: &[String]) -> anyhow::Result<resp::RespType> {
             }
         }))
     } else {
-        Err(wrong_arg_count("rpush").into())
+        Err(wrong_arg_count("lpush").into())
     }
 }
 
@@ -226,7 +226,7 @@ fn handle_lrange(args: &[String]) -> anyhow::Result<resp::RespType> {
                         resp::RespType::Array(Some(items))
                     }
                 }
-                Value::String(_) => resp::RespType::Error(
+                _ => resp::RespType::Error(
                     "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
                 ),
             },

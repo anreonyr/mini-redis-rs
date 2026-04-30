@@ -1,11 +1,13 @@
 mod cmd;
 mod db;
+mod inline;
 mod resp;
 
 use std::time::Duration;
 use tokio::time::Instant;
 
 use anyhow::Context;
+use inline::{apply_backspace, find_line, parse_quoted_args, strip_iac};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -61,6 +63,15 @@ async fn handle_connection(mut stream: tokio::net::TcpStream) -> anyhow::Result<
 
         pending.extend_from_slice(&read_buf[..n]);
 
+        // Prevent unbounded pending buffer growth
+        const MAX_PENDING: usize = 1024 * 1024;
+        if pending.len() > MAX_PENDING {
+            pending.clear();
+            let err = resp::RespType::Error("ERR inline buffer too large".to_string());
+            send_response(&mut stream, &err).await?;
+            continue;
+        }
+
         if inline_mode {
             process_inline(&mut pending, &mut stream).await?;
         } else {
@@ -73,9 +84,14 @@ async fn process_inline(
     pending: &mut Vec<u8>,
     stream: &mut tokio::net::TcpStream,
 ) -> anyhow::Result<()> {
-    while let Some(pos) = pending.windows(2).position(|w| w == b"\r\n") {
+    // Clean the buffer before processing lines
+    strip_iac(pending);
+    apply_backspace(pending);
+
+    // Process all complete lines
+    while let Some((pos, delim_len)) = find_line(pending) {
         let line = String::from_utf8_lossy(&pending[..pos]).trim().to_string();
-        pending.drain(..pos + 2);
+        pending.drain(..pos + delim_len);
 
         if line.is_empty() {
             continue;
@@ -83,11 +99,19 @@ async fn process_inline(
 
         println!("received inline: {}", line);
 
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        let cmd = parts[0].to_uppercase();
-        let args: Vec<String> = parts[1..].iter().map(|s| s.to_string()).collect();
-        let response = cmd::dispatch_command(&cmd, &args);
-        send_response(stream, &response).await?;
+        match parse_quoted_args(&line) {
+            Ok(args) if args.is_empty() => continue,
+            Ok(args) => {
+                let cmd = args[0].to_uppercase();
+                let cmd_args: Vec<String> = args[1..].to_vec();
+                let response = cmd::dispatch_command(&cmd, &cmd_args);
+                send_response(stream, &response).await?;
+            }
+            Err(e) => {
+                let err = resp::RespType::Error(e);
+                send_response(stream, &err).await?;
+            }
+        }
     }
     Ok(())
 }
