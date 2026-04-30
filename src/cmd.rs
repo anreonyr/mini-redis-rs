@@ -1,6 +1,7 @@
 use anyhow::Ok;
 use std::collections::VecDeque;
 use std::time::Duration;
+use std::{range, vec};
 use tokio::time::Instant;
 
 use crate::db::{Entry, Value, with_db};
@@ -260,24 +261,67 @@ fn handle_llen(args: &[String]) -> anyhow::Result<resp::RespType> {
 }
 
 fn handle_lpop(args: &[String]) -> anyhow::Result<resp::RespType> {
-    match args.first() {
-        Some(key) => Ok(with_db(|db| match db.get_mut(key) {
-            Some(entry) => {
-                if let Value::List(ref mut list) = entry.value {
-                    match list.pop_front() {
-                        Some(val) => resp::RespType::BulkString(Some(val)),
-                        None => resp::RespType::BulkString(None),
+    match args.len() {
+        1 => {
+            let key = &args[0];
+            Ok(with_db(|db| match db.get_mut(key) {
+                Some(entry) => {
+                    if let Value::List(ref mut list) = entry.value {
+                        let val = list.pop_front();
+                        if list.is_empty() {
+                            db.remove(key);
+                        }
+                        match val {
+                            Some(v) => resp::RespType::BulkString(Some(v)),
+                            None => resp::RespType::BulkString(None),
+                        }
+                    } else {
+                        resp::RespType::Error(
+                            "WRONGTYPE Operation against a key holding the wrong kind of value"
+                                .to_string(),
+                        )
                     }
-                } else {
-                    resp::RespType::Error(
-                        "WRONGTYPE Operation against a key holding the wrong kind of value"
-                            .to_string(),
-                    )
                 }
+                None => resp::RespType::BulkString(None),
+            }))
+        }
+        2 => {
+            let key = &args[0];
+            let count = args[1]
+                .parse::<usize>()
+                .map_err(|_| CmdError::InvalidInteger)?;
+            if count == 0 {
+                return Ok(resp::RespType::Array(Some(vec![])));
             }
-            None => resp::RespType::BulkString(None),
-        })),
-        None => Err(wrong_arg_count("lpop").into()),
+            Ok(with_db(|db| match db.get_mut(key) {
+                Some(entry) => {
+                    if let Value::List(ref mut list) = entry.value {
+                        let mut popped: Vec<resp::RespType> = Vec::new();
+                        for _ in 0..count {
+                            match list.pop_front() {
+                                Some(val) => popped.push(resp::RespType::BulkString(Some(val))),
+                                None => break,
+                            }
+                        }
+                        if list.is_empty() {
+                            db.remove(key);
+                        }
+                        if popped.is_empty() {
+                            resp::RespType::Array(None)
+                        } else {
+                            resp::RespType::Array(Some(popped))
+                        }
+                    } else {
+                        resp::RespType::Error(
+                            "WRONGTYPE Operation against a key holding the wrong kind of value"
+                                .to_string(),
+                        )
+                    }
+                }
+                None => resp::RespType::Array(None),
+            }))
+        }
+        _ => Err(wrong_arg_count("lpop").into()),
     }
 }
 
