@@ -1,3 +1,4 @@
+use anyhow::Ok;
 use std::collections::VecDeque;
 use std::time::Duration;
 use tokio::time::Instant;
@@ -54,6 +55,7 @@ pub fn dispatch_command(cmd: &str, args: &[String]) -> resp::RespType {
         "LPUSH" => handle_lpush(args),
         "LRANGE" => handle_lrange(args),
         "LLEN" => handle_llen(args),
+        "LPOP" => handle_lpop(args),
         _ => return resp::RespType::Error("ERR unknown command".to_string()),
     })
     .unwrap_or_else(|e| resp::RespType::Error(e.to_string()))
@@ -245,12 +247,37 @@ fn handle_llen(args: &[String]) -> anyhow::Result<resp::RespType> {
                 if let Value::List(u) = &v.value {
                     resp::RespType::Integer(u.len() as i64)
                 } else {
-                    resp::RespType::Integer(0)
+                    resp::RespType::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    )
                 }
             }
             None => resp::RespType::Integer(0),
         })),
         None => Err(wrong_arg_count("llen").into()),
+    }
+}
+
+fn handle_lpop(args: &[String]) -> anyhow::Result<resp::RespType> {
+    match args.first() {
+        Some(key) => Ok(with_db(|db| match db.get_mut(key) {
+            Some(entry) => {
+                if let Value::List(ref mut list) = entry.value {
+                    match list.pop_front() {
+                        Some(val) => resp::RespType::BulkString(Some(val)),
+                        None => resp::RespType::BulkString(None),
+                    }
+                } else {
+                    resp::RespType::Error(
+                        "WRONGTYPE Operation against a key holding the wrong kind of value"
+                            .to_string(),
+                    )
+                }
+            }
+            None => resp::RespType::BulkString(None),
+        })),
+        None => Err(wrong_arg_count("lpop").into()),
     }
 }
 
