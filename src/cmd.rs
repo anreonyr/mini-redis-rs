@@ -53,6 +53,7 @@ pub fn dispatch_command(cmd: &str, args: &[String]) -> resp::RespType {
         "RPUSH" => handle_rpush(args),
         "LPUSH" => handle_lpush(args),
         "LRANGE" => handle_lrange(args),
+        "LLEN" => handle_llen(args),
         _ => return resp::RespType::Error("ERR unknown command".to_string()),
     })
     .unwrap_or_else(|e| resp::RespType::Error(e.to_string()))
@@ -160,8 +161,8 @@ fn handle_rpush(args: &[String]) -> anyhow::Result<resp::RespType> {
 fn handle_lpush(args: &[String]) -> anyhow::Result<resp::RespType> {
     if args.len() >= 2 {
         let values: VecDeque<Vec<u8>> = args[1..].iter().map(|v| v.as_bytes().to_vec()).collect();
-        let key = args[0].clone();
-        Ok(with_db(|db| match db.get_mut(&key) {
+        let key = &args[0];
+        Ok(with_db(|db| match db.get_mut(key) {
             Some(entry) => {
                 if let Value::List(ref mut list) = entry.value {
                     for v in values {
@@ -177,7 +178,7 @@ fn handle_lpush(args: &[String]) -> anyhow::Result<resp::RespType> {
             }
             None => {
                 let len = values.len();
-                db.insert(key, Entry::new(Value::List(values), None));
+                db.insert(key.to_owned(), Entry::new(Value::List(values), None));
                 resp::RespType::Integer(len as i64)
             }
         }))
@@ -234,6 +235,22 @@ fn handle_lrange(args: &[String]) -> anyhow::Result<resp::RespType> {
         }))
     } else {
         Err(wrong_arg_count("lrange").into())
+    }
+}
+
+fn handle_llen(args: &[String]) -> anyhow::Result<resp::RespType> {
+    match args.first() {
+        Some(key) => Ok(with_db(|db| match db.get(key) {
+            Some(v) => {
+                if let Value::List(u) = &v.value {
+                    resp::RespType::Integer(u.len() as i64)
+                } else {
+                    resp::RespType::Integer(0)
+                }
+            }
+            None => resp::RespType::Integer(0),
+        })),
+        None => Err(wrong_arg_count("llen").into()),
     }
 }
 
