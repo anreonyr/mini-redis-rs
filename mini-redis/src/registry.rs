@@ -129,6 +129,56 @@ pub fn init() {
         since_stage: 0,
         summary: "Removes all data from the current database",
     });
+    // Streams
+    reg.register(CommandInfo {
+        name: "XADD",
+        arity: -4,
+        category: "Stream",
+        since_stage: 0,
+        summary: "Appends a new entry to a stream",
+    });
+    reg.register(CommandInfo {
+        name: "XRANGE",
+        arity: -4,
+        category: "Stream",
+        since_stage: 0,
+        summary: "Returns a range of entries from a stream",
+    });
+    reg.register(CommandInfo {
+        name: "XREVRANGE",
+        arity: -4,
+        category: "Stream",
+        since_stage: 0,
+        summary: "Returns a range of entries in reverse order",
+    });
+    reg.register(CommandInfo {
+        name: "XLEN",
+        arity: 2,
+        category: "Stream",
+        since_stage: 0,
+        summary: "Returns the length of a stream",
+    });
+    reg.register(CommandInfo {
+        name: "XTRIM",
+        arity: -3,
+        category: "Stream",
+        since_stage: 0,
+        summary: "Trims a stream to a given length",
+    });
+    reg.register(CommandInfo {
+        name: "XDEL",
+        arity: -3,
+        category: "Stream",
+        since_stage: 0,
+        summary: "Removes one or more entries from a stream",
+    });
+    reg.register(CommandInfo {
+        name: "XREAD",
+        arity: -4,
+        category: "Stream",
+        since_stage: 0,
+        summary: "Reads data from one or more streams",
+    });
 }
 
 pub fn with_registry<F, R>(f: F) -> R

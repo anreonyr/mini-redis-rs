@@ -6,9 +6,33 @@ use tokio::time::Instant; // Import Bytes from the byts crate
 static DB: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct StreamEntry {
+    pub id: String,
+    pub fields: Vec<(Bytes, Bytes)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct StreamData {
+    pub entries: VecDeque<StreamEntry>,
+    pub last_timestamp_ms: i64,
+    pub last_seq: u64,
+}
+
+impl StreamData {
+    pub fn new() -> Self {
+        Self {
+            entries: VecDeque::new(),
+            last_timestamp_ms: 0,
+            last_seq: 0,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     String(Bytes),
     List(VecDeque<Bytes>),
+    Stream(StreamData),
     Hash(HashMap<Bytes, Bytes>),
     Set(HashSet<Bytes>),
     ZSet(BTreeSet<(i64, Bytes)>),

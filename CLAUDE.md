@@ -52,3 +52,21 @@ test-tools/                 # test-tools crate — test/benchmark/tui binaries
 - **Commands** are defined in `ParsedCmd::parse()` (string → enum) and dispatched in `dispatch_command()` (enum → handler function).
 - **Communication protocol**: two modes auto-detected per connection — inline (telnet-style, `inline.rs`) and RESP (binary, `resp.rs`).
 - **BLPOP blocking** uses `tokio::sync::Notify` + `Weak<Notify>` registry to avoid holding the DB lock while waiting.
+
+## TDD 工作方式（练习用）
+
+本项目的目的是练习实现 Redis 命令，采用测试驱动开发（TDD）方式：
+
+1. **先写测试 + 基础设施**：添加新功能时，只实现：
+   - `ParsedCmd` 枚举变体（命令定义）
+   - 命令解析逻辑（`parse()` 中的 match arm）
+   - `Value` 枚举变体（数据类型定义）
+   - `db.rs` 中的数据结构（如 `StreamEntry`、`StreamData`）
+   - `registry.rs` 注册条目
+   - `test-tools` 中的测试函数、TestDef、dispatch
+
+2. **handler 返回 stub**：新的命令 handler 只返回 `"ERR not implemented"` 错误，不实现真正的功能逻辑。
+
+3. **用户练习实现**：用户自己实现 handler 中的功能逻辑，让测试从红变绿。
+
+这样用户可以专注于练习核心算法（ID 生成、范围查询、裁剪等），而不需要搭建解析、路由、测试框架等脚手架。

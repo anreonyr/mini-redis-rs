@@ -6,7 +6,7 @@ use tokio::sync::Notify;
 use tokio::time::Instant;
 
 use crate::blocking;
-use crate::db::{Entry, Value, with_db};
+use crate::db::{Entry, StreamData, StreamEntry, Value, with_db};
 use crate::registry;
 use crate::resp;
 
@@ -53,6 +53,42 @@ pub enum ParsedCmd {
     Command {
         subcommand: Option<String>,
         name: Option<String>,
+    },
+    // Streams
+    Xadd {
+        key: String,
+        id: String,
+        fields: Vec<String>,
+    },
+    Xrange {
+        key: String,
+        start: String,
+        end: String,
+        count: Option<u64>,
+    },
+    Xrevrange {
+        key: String,
+        end: String,
+        start: String,
+        count: Option<u64>,
+    },
+    Xlen {
+        key: String,
+    },
+    Xtrim {
+        key: String,
+        strategy: String,
+        threshold: u64,
+        exact: bool,
+    },
+    Xdel {
+        key: String,
+        ids: Vec<String>,
+    },
+    Xread {
+        count: Option<u64>,
+        keys: Vec<String>,
+        ids: Vec<String>,
     },
 }
 
@@ -192,6 +228,113 @@ impl ParsedCmd {
                 ParsedCmd::Command { subcommand, name }
             }
             "FLUSHDB" => ParsedCmd::Flushdb,
+            // Streams
+            "XADD" => {
+                if args.len() < 3 || args.len() % 2 != 0 {
+                    return Err(wrong_arg_count("xadd"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let id = iter.next().unwrap();
+                let fields: Vec<String> = iter.collect();
+                ParsedCmd::Xadd { key, id, fields }
+            }
+            "XRANGE" => {
+                if args.len() < 3 || args.len() > 5 {
+                    return Err(wrong_arg_count("xrange"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let start = iter.next().unwrap();
+                let end = iter.next().unwrap();
+                let count = match (iter.next(), iter.next()) {
+                    (Some(flag), Some(val)) if flag == "COUNT" => {
+                        Some(val.parse::<u64>().map_err(|_| CmdError::InvalidInteger)?)
+                    }
+                    (None, None) => None,
+                    _ => return Err(wrong_arg_count("xrange")),
+                };
+                ParsedCmd::Xrange { key, start, end, count }
+            }
+            "XREVRANGE" => {
+                if args.len() < 3 || args.len() > 5 {
+                    return Err(wrong_arg_count("xrevrange"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let end = iter.next().unwrap();
+                let start = iter.next().unwrap();
+                let count = match (iter.next(), iter.next()) {
+                    (Some(flag), Some(val)) if flag == "COUNT" => {
+                        Some(val.parse::<u64>().map_err(|_| CmdError::InvalidInteger)?)
+                    }
+                    (None, None) => None,
+                    _ => return Err(wrong_arg_count("xrevrange")),
+                };
+                ParsedCmd::Xrevrange { key, end, start, count }
+            }
+            "XLEN" => {
+                let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("xlen"))?;
+                ParsedCmd::Xlen { key }
+            }
+            "XTRIM" => {
+                if args.len() < 3 || args.len() > 4 {
+                    return Err(wrong_arg_count("xtrim"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let strategy = iter.next().ok_or_else(|| wrong_arg_count("xtrim"))?;
+                if strategy.to_uppercase() != "MAXLEN" {
+                    return Err(CmdError::SyntaxError);
+                }
+                let exact = match iter.next().as_deref() {
+                    Some("~") => false,
+                    Some(n) => {
+                        let threshold = n.parse::<u64>().map_err(|_| CmdError::InvalidInteger)?;
+                        return Ok(ParsedCmd::Xtrim { key, strategy, threshold, exact: true });
+                    }
+                    None => return Err(wrong_arg_count("xtrim")),
+                };
+                let threshold = iter.next().ok_or_else(|| wrong_arg_count("xtrim"))?
+                    .parse::<u64>().map_err(|_| CmdError::InvalidInteger)?;
+                ParsedCmd::Xtrim { key, strategy, threshold, exact }
+            }
+            "XDEL" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count("xdel"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let ids: Vec<String> = iter.collect();
+                ParsedCmd::Xdel { key, ids }
+            }
+            "XREAD" => {
+                if args.is_empty() {
+                    return Err(wrong_arg_count("xread"));
+                }
+                // Check if first arg is COUNT
+                let (count, remaining) = if args[0] == "COUNT" {
+                    if args.len() < 3 {
+                        return Err(wrong_arg_count("xread"));
+                    }
+                    let n = args[1].parse::<u64>()
+                        .map_err(|_| CmdError::InvalidInteger)?;
+                    (Some(n), &args[2..])
+                } else {
+                    (None, &args[..])
+                };
+                if remaining.is_empty() || remaining[0].to_uppercase() != "STREAMS" {
+                    return Err(wrong_arg_count("xread"));
+                }
+                let all = &remaining[1..];
+                if all.is_empty() || all.len() % 2 != 0 {
+                    return Err(wrong_arg_count("xread"));
+                }
+                let mid = all.len() / 2;
+                let keys = all[..mid].to_vec();
+                let ids = all[mid..].to_vec();
+                ParsedCmd::Xread { count, keys, ids }
+            }
             _ => return Err(CmdError::UnknownCommand),
         })
     }
@@ -243,6 +386,14 @@ pub async fn dispatch_command(cmd: Result<ParsedCmd, CmdError>) -> resp::RespTyp
         ParsedCmd::Blpop { keys, timeout } => handle_blpop(&keys, timeout).await,
         ParsedCmd::Command { subcommand, name } => handle_command(subcommand, name),
         ParsedCmd::Flushdb => handle_flushdb(),
+        // Streams
+        ParsedCmd::Xadd { key, id, fields } => handle_xadd(&key, &id, &fields),
+        ParsedCmd::Xrange { key, start, end, count } => handle_xrange(&key, &start, &end, count),
+        ParsedCmd::Xrevrange { key, end, start, count } => handle_xrevrange(&key, &end, &start, count),
+        ParsedCmd::Xlen { key } => handle_xlen(&key),
+        ParsedCmd::Xtrim { key, strategy, threshold, exact } => handle_xtrim(&key, &strategy, threshold, exact),
+        ParsedCmd::Xdel { key, ids } => handle_xdel(&key, &ids),
+        ParsedCmd::Xread { count, keys, ids } => handle_xread(count, &keys, &ids),
     }
 }
 
@@ -552,4 +703,275 @@ fn handle_command(subcommand: Option<String>, name: Option<String>) -> resp::Res
 fn handle_flushdb() -> resp::RespType {
     crate::db::flushdb();
     resp::RespType::SimpleString("OK".to_string())
+}
+
+// ── Stream ID helpers ─────────────────────────────────────────────────
+
+fn parse_stream_id(id: &str) -> Option<(i64, u64)> {
+    if id == "*" || id == "-" || id == "+" {
+        return None;
+    }
+    let parts: Vec<&str> = id.splitn(2, '-').collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let ts = parts[0].parse::<i64>().ok()?;
+    let seq = parts[1].parse::<u64>().ok()?;
+    Some((ts, seq))
+}
+
+fn auto_stream_id(last_ts: i64, last_seq: u64) -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    let (ts, seq) = if now > last_ts {
+        (now, 0)
+    } else if now == last_ts {
+        (last_ts, last_seq + 1)
+    } else {
+        (last_ts + 1, 0)
+    };
+    format!("{}-{}", ts, seq)
+}
+
+fn auto_seq_for_timestamp(ts: i64, last_ts: i64, last_seq: u64) -> String {
+    if ts > last_ts {
+        format!("{}-{}", ts, 0)
+    } else if ts == last_ts {
+        format!("{}-{}", ts, last_seq + 1)
+    } else {
+        // Timestamp is behind — use last_timestamp + 1
+        format!("{}-0", last_ts + 1)
+    }
+}
+
+fn make_stream_entry(id: String, fields: Vec<(Bytes, Bytes)>) -> resp::RespType {
+    let mut arr = vec![resp::RespType::BulkString(Some(Bytes::from(id)))];
+    let mut fv = Vec::with_capacity(fields.len() * 2);
+    for (k, v) in &fields {
+        fv.push(resp::RespType::BulkString(Some(k.clone())));
+        fv.push(resp::RespType::BulkString(Some(v.clone())));
+    }
+    arr.push(resp::RespType::Array(Some(fv)));
+    resp::RespType::Array(Some(arr))
+}
+
+// ── Stream command handlers ───────────────────────────────────────────
+
+fn handle_xadd(key: &str, id_spec: &str, field_args: &[String]) -> resp::RespType {
+    if field_args.len() < 2 || field_args.len() % 2 != 0 {
+        return resp::RespType::Error(
+            "ERR wrong number of arguments for 'xadd'".to_string(),
+        );
+    }
+
+    let fields: Vec<(Bytes, Bytes)> = field_args
+        .chunks(2)
+        .map(|c| (Bytes::from(c[0].clone()), Bytes::from(c[1].clone())))
+        .collect();
+
+    with_db(|db| {
+        let entry = db.entry(key.to_string()).or_insert_with(|| {
+            Entry::new(Value::Stream(StreamData::new()), None)
+        });
+
+        match &mut entry.value {
+            Value::Stream(stream) => {
+                let is_empty = stream.entries.is_empty();
+                let final_id = if id_spec == "*" {
+                    auto_stream_id(stream.last_timestamp_ms, stream.last_seq)
+                } else if let Some(ts) = id_spec.strip_suffix("-*") {
+                    let t = ts.parse::<i64>().unwrap_or(0);
+                    auto_seq_for_timestamp(t, stream.last_timestamp_ms, stream.last_seq)
+                } else if let Some((ts, seq)) = parse_stream_id(id_spec) {
+                    let last = (stream.last_timestamp_ms, stream.last_seq);
+                    if !is_empty && (ts, seq) <= last {
+                        return resp::RespType::Error(
+                            "ERR The ID specified in XADD is equal or smaller than the target stream top item".to_string(),
+                        );
+                    }
+                    format!("{}-{}", ts, seq)
+                } else {
+                    return resp::RespType::Error("ERR invalid stream ID".to_string());
+                };
+
+                // Update last used ID
+                if let Some((ts, seq)) = parse_stream_id(&final_id) {
+                    stream.last_timestamp_ms = ts;
+                    stream.last_seq = seq;
+                }
+
+                stream.entries.push_back(StreamEntry {
+                    id: final_id.clone(),
+                    fields,
+                });
+
+                resp::RespType::BulkString(Some(Bytes::from(final_id)))
+            }
+            _ => wrong_type(),
+        }
+    })
+}
+
+fn handle_xrange(key: &str, start: &str, end: &str, count: Option<u64>) -> resp::RespType {
+    with_db(|db| match db.get(key) {
+        Some(entry) => match &entry.value {
+            Value::Stream(stream) => {
+                let start_id = if start == "-" {
+                    (i64::MIN, 0u64)
+                } else {
+                    parse_stream_id(start).unwrap_or((i64::MIN, 0))
+                };
+                let end_id = if end == "+" {
+                    (i64::MAX, u64::MAX)
+                } else {
+                    parse_stream_id(end).unwrap_or((i64::MAX, u64::MAX))
+                };
+
+                let matched: Vec<resp::RespType> = stream
+                    .entries
+                    .iter()
+                    .filter(|e| {
+                        parse_stream_id(&e.id)
+                            .map(|(ts, seq)| (ts, seq) >= start_id && (ts, seq) <= end_id)
+                            .unwrap_or(false)
+                    })
+                    .take(count.unwrap_or(u64::MAX) as usize)
+                    .map(|e| make_stream_entry(e.id.clone(), e.fields.clone()))
+                    .collect();
+
+                resp::RespType::Array(Some(matched))
+            }
+            _ => wrong_type(),
+        },
+        None => resp::RespType::Array(Some(vec![])),
+    })
+}
+
+fn handle_xrevrange(key: &str, end: &str, start: &str, count: Option<u64>) -> resp::RespType {
+    with_db(|db| match db.get(key) {
+        Some(entry) => match &entry.value {
+            Value::Stream(stream) => {
+                let end_id = if end == "+" {
+                    (i64::MAX, u64::MAX)
+                } else {
+                    parse_stream_id(end).unwrap_or((i64::MAX, u64::MAX))
+                };
+                let start_id = if start == "-" {
+                    (i64::MIN, 0u64)
+                } else {
+                    parse_stream_id(start).unwrap_or((i64::MIN, 0))
+                };
+
+                let matched: Vec<resp::RespType> = stream
+                    .entries
+                    .iter()
+                    .rev()
+                    .filter(|e| {
+                        parse_stream_id(&e.id)
+                            .map(|(ts, seq)| (ts, seq) >= start_id && (ts, seq) <= end_id)
+                            .unwrap_or(false)
+                    })
+                    .take(count.unwrap_or(u64::MAX) as usize)
+                    .map(|e| make_stream_entry(e.id.clone(), e.fields.clone()))
+                    .collect();
+
+                resp::RespType::Array(Some(matched))
+            }
+            _ => wrong_type(),
+        },
+        None => resp::RespType::Array(Some(vec![])),
+    })
+}
+
+fn handle_xlen(key: &str) -> resp::RespType {
+    with_db(|db| match db.get(key) {
+        Some(entry) => match &entry.value {
+            Value::Stream(stream) => resp::RespType::Integer(stream.entries.len() as i64),
+            _ => wrong_type(),
+        },
+        None => resp::RespType::Integer(0),
+    })
+}
+
+fn handle_xtrim(key: &str, _strategy: &str, threshold: u64, _exact: bool) -> resp::RespType {
+    with_db(|db| match db.get_mut(key) {
+        Some(entry) => match &mut entry.value {
+            Value::Stream(stream) => {
+                let before = stream.entries.len();
+                if before > threshold as usize {
+                    let to_remove = before - threshold as usize;
+                    stream.entries.drain(..to_remove);
+                    // Reset last_ts/seq if everything was removed
+                    if stream.entries.is_empty() {
+                        stream.last_timestamp_ms = 0;
+                        stream.last_seq = 0;
+                    }
+                    resp::RespType::Integer(to_remove as i64)
+                } else {
+                    resp::RespType::Integer(0)
+                }
+            }
+            _ => wrong_type(),
+        },
+        None => resp::RespType::Integer(0),
+    })
+}
+
+fn handle_xdel(key: &str, ids: &[String]) -> resp::RespType {
+    with_db(|db| match db.get_mut(key) {
+        Some(entry) => match &mut entry.value {
+            Value::Stream(stream) => {
+                let before = stream.entries.len();
+                stream.entries.retain(|e| !ids.contains(&e.id));
+                let removed = before - stream.entries.len();
+                if stream.entries.is_empty() {
+                    db.remove(key);
+                }
+                resp::RespType::Integer(removed as i64)
+            }
+            _ => wrong_type(),
+        },
+        None => resp::RespType::Integer(0),
+    })
+}
+
+fn handle_xread(count: Option<u64>, keys: &[String], ids: &[String]) -> resp::RespType {
+    with_db(|db| {
+        let mut streams_resp: Vec<resp::RespType> = Vec::new();
+
+        for (key, since_id_str) in keys.iter().zip(ids.iter()) {
+            let since = parse_stream_id(since_id_str).unwrap_or((0, 0));
+
+            if let Some(entry) = db.get(key) {
+                if let Value::Stream(ref stream) = entry.value {
+                    let entries: Vec<resp::RespType> = stream
+                        .entries
+                        .iter()
+                        .filter(|e| {
+                            parse_stream_id(&e.id)
+                                .map(|(ts, seq)| (ts, seq) > since)
+                                .unwrap_or(false)
+                        })
+                        .take(count.unwrap_or(u64::MAX) as usize)
+                        .map(|e| make_stream_entry(e.id.clone(), e.fields.clone()))
+                        .collect();
+
+                    if !entries.is_empty() {
+                        streams_resp.push(resp::RespType::Array(Some(vec![
+                            resp::RespType::BulkString(Some(Bytes::from(key.clone()))),
+                            resp::RespType::Array(Some(entries)),
+                        ])));
+                    }
+                }
+            }
+        }
+
+        if streams_resp.is_empty() {
+            resp::RespType::Array(Some(vec![]))
+        } else {
+            resp::RespType::Array(Some(streams_resp))
+        }
+    })
 }

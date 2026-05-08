@@ -511,6 +511,346 @@ pub mod functional_tests {
             _ => Err(format!("LLEN on string: expected WRONGTYPE, got {}", r)),
         }
     }
+
+    // ── COMMAND tests ─────────────────────────────────────────────────
+
+    pub async fn test_command_plain(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["COMMAND"]).await?;
+        match &r {
+            RespType::Array(Some(items)) => {
+                if items.len() < 10 {
+                    return Err(format!("COMMAND: expected at least 10 items, got {}", items.len()));
+                }
+                let names: Vec<String> = items.iter().filter_map(|i| {
+                    if let RespType::BulkString(Some(b)) = i {
+                        Some(String::from_utf8_lossy(b).to_string())
+                    } else {
+                        None
+                    }
+                }).collect();
+                for required in &["PING", "GET", "SET", "COMMAND", "FLUSHDB"] {
+                    if !names.iter().any(|n| n.eq_ignore_ascii_case(required)) {
+                        return Err(format!("COMMAND: missing required command {required}"));
+                    }
+                }
+                Ok(())
+            }
+            _ => Err(format!("COMMAND: expected Array, got {}", r)),
+        }
+    }
+
+    pub async fn test_command_info_all(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["COMMAND", "INFO"]).await?;
+        match &r {
+            RespType::Array(Some(items)) => {
+                for item in items {
+                    match item {
+                        RespType::Array(Some(fields)) => {
+                            if fields.len() != 6 {
+                                return Err(format!("COMMAND INFO: expected 6 fields, got {}: {}",
+                                    fields.len(), RespType::Array(Some(fields.clone())).to_string()));
+                            }
+                        }
+                        _ => return Err(format!("COMMAND INFO: expected Array of Arrays, got {}", r)),
+                    }
+                }
+                if items.len() < 10 {
+                    return Err(format!("COMMAND INFO: expected >= 10 entries, got {}", items.len()));
+                }
+                Ok(())
+            }
+            _ => Err(format!("COMMAND INFO: expected Array, got {}", r)),
+        }
+    }
+
+    pub async fn test_command_info_specific(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["COMMAND", "INFO", "PING"]).await?;
+        match &r {
+            RespType::Array(Some(items)) if items.len() == 1 => {
+                match &items[0] {
+                    RespType::Array(Some(fields)) if fields.len() == 6 => {
+                        if let RespType::BulkString(Some(name)) = &fields[0] {
+                            if String::from_utf8_lossy(name).eq_ignore_ascii_case("PING") {
+                                return Ok(());
+                            }
+                        }
+                        Err(format!("COMMAND INFO PING: unexpected format: {}", r))
+                    }
+                    _ => Err(format!("COMMAND INFO PING: expected inner Array of 6, got {}", r)),
+                }
+            }
+            RespType::Array(Some(items)) => Err(format!(
+                "COMMAND INFO PING: expected 1-element array, got {} elements: {}", items.len(), r)),
+            _ => Err(format!("COMMAND INFO PING: expected Array, got {}", r)),
+        }
+    }
+
+    pub async fn test_command_info_nonexistent(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["COMMAND", "INFO", "FOOBAR_NONEXIST"]).await?;
+        crate::assert_resp!(r, null_array(), "COMMAND INFO nonexistent");
+        Ok(())
+    }
+
+    pub async fn test_command_unknown_subcommand(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["COMMAND", "FOO"]).await?;
+        match &r {
+            RespType::Array(Some(items)) => {
+                if items.len() < 10 {
+                    return Err(format!("COMMAND FOO: expected at least 10 items, got {}", items.len()));
+                }
+                Ok(())
+            }
+            _ => Err(format!("COMMAND FOO: expected Array of names, got {}", r)),
+        }
+    }
+
+    // ── Server tests ──────────────────────────────────────────────────
+
+    pub async fn test_flushdb(client: &mut RedisClient) -> Result<(), String> {
+        let _ = client.cmd(&["SET", "test_rs:flush_k", "v"]).await?;
+        let r = client.cmd(&["FLUSHDB"]).await?;
+        crate::assert_resp!(r, simple_str("OK"), "FLUSHDB response");
+        let r = client.cmd(&["GET", "test_rs:flush_k"]).await?;
+        crate::assert_resp!(r, null_bulk(), "GET after FLUSHDB");
+        Ok(())
+    }
+
+    // ── BLPOP edge cases ──────────────────────────────────────────────
+
+    pub async fn test_blpop_zero_timeout_with_data(client: &mut RedisClient) -> Result<(), String> {
+        let _ = client.cmd(&["RPUSH", "test_rs:blpop_zero", "val"]).await?;
+        let now = tokio::time::Instant::now();
+        let r = client.cmd(&["BLPOP", "test_rs:blpop_zero", "0"]).await?;
+        let elapsed = now.elapsed();
+        if elapsed.as_millis() > 100 {
+            return Err(format!("BLPOP 0 timeout with data: took {}ms, expected < 100ms", elapsed.as_millis()));
+        }
+        match &r {
+            RespType::Array(Some(items)) if items.len() == 2 => Ok(()),
+            _ => Err(format!("BLPOP 0 timeout with data: expected Array of 2, got {}", r)),
+        }
+    }
+
+    // ── WRONGTYPE edge cases ──────────────────────────────────────────
+
+    pub async fn test_wrongtype_rpush_on_string(client: &mut RedisClient) -> Result<(), String> {
+        let _ = client.cmd(&["SET", "test_rs:wt_rpush", "val"]).await?;
+        let r = client.cmd(&["RPUSH", "test_rs:wt_rpush", "a"]).await?;
+        match &r {
+            RespType::Error(msg) if msg.to_lowercase().contains("wrongtype") => Ok(()),
+            _ => Err(format!("RPUSH on string: expected WRONGTYPE, got {}", r)),
+        }
+    }
+
+    pub async fn test_wrongtype_lpop_on_string(client: &mut RedisClient) -> Result<(), String> {
+        let _ = client.cmd(&["SET", "test_rs:wt_lpop", "val"]).await?;
+        let r = client.cmd(&["LPOP", "test_rs:wt_lpop"]).await?;
+        match &r {
+            RespType::Error(msg) if msg.to_lowercase().contains("wrongtype") => Ok(()),
+            _ => Err(format!("LPOP on string: expected WRONGTYPE, got {}", r)),
+        }
+    }
+
+    pub async fn test_wrongtype_lrange_on_string(client: &mut RedisClient) -> Result<(), String> {
+        let _ = client.cmd(&["SET", "test_rs:wt_lrange", "val"]).await?;
+        let r = client.cmd(&["LRANGE", "test_rs:wt_lrange", "0", "-1"]).await?;
+        match &r {
+            RespType::Error(msg) if msg.to_lowercase().contains("wrongtype") => Ok(()),
+            _ => Err(format!("LRANGE on string: expected WRONGTYPE, got {}", r)),
+        }
+    }
+
+    pub async fn test_wrongtype_blpop_on_string(client: &mut RedisClient) -> Result<(), String> {
+        let _ = client.cmd(&["SET", "test_rs:wt_blpop", "val"]).await?;
+        let r = client.cmd(&["BLPOP", "test_rs:wt_blpop", "1"]).await?;
+        match &r {
+            RespType::Error(msg) if msg.to_lowercase().contains("wrongtype") => Ok(()),
+            _ => Err(format!("BLPOP on string: expected WRONGTYPE, got {}", r)),
+        }
+    }
+
+    // ── Stream tests ─────────────────────────────────────────────────
+
+    pub async fn test_xadd_basic(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["XADD", "test_rs:s1", "*", "field1", "value1"]).await?;
+        match &r {
+            RespType::BulkString(Some(id)) => {
+                let id_str = String::from_utf8_lossy(id);
+                if !id_str.contains('-') {
+                    return Err(format!("XADD: expected ID containing '-', got {}", id_str));
+                }
+                Ok(())
+            }
+            _ => Err(format!("XADD: expected BulkString ID, got {}", r)),
+        }
+    }
+
+    pub async fn test_xadd_explicit_id(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["XADD", "test_rs:s_explicit", "1000-0", "f", "v"]).await?;
+        crate::assert_resp!(r, bulk_str("1000-0"), "XADD explicit ID");
+        let r2 = client.cmd(&["XLEN", "test_rs:s_explicit"]).await?;
+        crate::assert_resp!(r2, int(1), "XLEN after explicit XADD");
+        Ok(())
+    }
+
+    pub async fn test_xadd_sequence_auto(client: &mut RedisClient) -> Result<(), String> {
+        // Two XADDs in the same millisecond with * should auto-increment sequence
+        let r1 = client.cmd(&["XADD", "test_rs:s_auto", "100-0", "f", "v"]).await?;
+        crate::assert_resp!(r1, bulk_str("100-0"), "XADD 100-0");
+        let r2 = client.cmd(&["XADD", "test_rs:s_auto", "100-*", "f", "v2"]).await?;
+        match &r2 {
+            RespType::BulkString(Some(id)) => {
+                let id_str = String::from_utf8_lossy(id);
+                if id_str != "100-1" {
+                    return Err(format!("XADD 100-*: expected '100-1', got {}", id_str));
+                }
+                Ok(())
+            }
+            _ => Err(format!("XADD 100-*: expected BulkString, got {}", r2)),
+        }
+    }
+
+    pub async fn test_xlen(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["XLEN", "test_rs:s1"]).await?;
+        crate::assert_resp!(r, int(1), "XLEN existing stream");
+        let r2 = client.cmd(&["XLEN", "test_rs:nox"]).await?;
+        crate::assert_resp!(r2, int(0), "XLEN nonexistent stream");
+        Ok(())
+    }
+
+    pub async fn test_xadd_multiple(client: &mut RedisClient) -> Result<(), String> {
+        let _ = client.cmd(&["XADD", "test_rs:s2", "0-1", "a", "1"]).await?;
+        let _ = client.cmd(&["XADD", "test_rs:s2", "0-2", "b", "2"]).await?;
+        let _ = client.cmd(&["XADD", "test_rs:s2", "0-3", "c", "3"]).await?;
+        let r = client.cmd(&["XLEN", "test_rs:s2"]).await?;
+        crate::assert_resp!(r, int(3), "XLEN after 3 XADDs");
+        Ok(())
+    }
+
+    pub async fn test_xrange_full(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["XRANGE", "test_rs:s2", "-", "+"]).await?;
+        match &r {
+            RespType::Array(Some(entries)) => {
+                if entries.len() != 3 {
+                    return Err(format!("XRANGE full: expected 3 entries, got {}", entries.len()));
+                }
+                for (i, entry) in entries.iter().enumerate() {
+                    match entry {
+                        RespType::Array(Some(parts)) if parts.len() == 2 => {}
+                        _ => return Err(format!(
+                            "XRANGE entry {}: expected Array[2], got {}", i, entry)),
+                    }
+                }
+                Ok(())
+            }
+            _ => Err(format!("XRANGE full: expected Array, got {}", r)),
+        }
+    }
+
+    pub async fn test_xrange_range(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["XRANGE", "test_rs:s2", "0-2", "0-3"]).await?;
+        match &r {
+            RespType::Array(Some(entries)) if entries.len() == 2 => Ok(()),
+            RespType::Array(Some(entries)) => Err(format!(
+                "XRANGE 0-2 0-3: expected 2 entries, got {}", entries.len())),
+            _ => Err(format!("XRANGE range: expected Array, got {}", r)),
+        }
+    }
+
+    pub async fn test_xrange_count(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["XRANGE", "test_rs:s2", "-", "+", "COUNT", "2"]).await?;
+        match &r {
+            RespType::Array(Some(entries)) if entries.len() == 2 => Ok(()),
+            RespType::Array(Some(entries)) => Err(format!(
+                "XRANGE COUNT 2: expected 2 entries, got {}", entries.len())),
+            _ => Err(format!("XRANGE COUNT: expected Array, got {}", r)),
+        }
+    }
+
+    pub async fn test_xrevrange(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["XREVRANGE", "test_rs:s2", "+", "-"]).await?;
+        match &r {
+            RespType::Array(Some(entries)) => {
+                if entries.len() != 3 {
+                    return Err(format!("XREVRANGE: expected 3 entries, got {}", entries.len()));
+                }
+                Ok(())
+            }
+            _ => Err(format!("XREVRANGE: expected Array, got {}", r)),
+        }
+    }
+
+    pub async fn test_xtrim(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["XTRIM", "test_rs:s2", "MAXLEN", "2"]).await?;
+        crate::assert_resp!(r, int(1), "XTRIM removed 1");
+        let r2 = client.cmd(&["XLEN", "test_rs:s2"]).await?;
+        crate::assert_resp!(r2, int(2), "XLEN after XTRIM");
+        Ok(())
+    }
+
+    pub async fn test_xdel(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["XDEL", "test_rs:s2", "0-2"]).await?;
+        crate::assert_resp!(r, int(1), "XDEL 0-2");
+        let r2 = client.cmd(&["XLEN", "test_rs:s2"]).await?;
+        crate::assert_resp!(r2, int(1), "XLEN after XDEL");
+        Ok(())
+    }
+
+    pub async fn test_xread_basic(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["XREAD", "STREAMS", "test_rs:s2", "0"]).await?;
+        match &r {
+            RespType::Array(Some(streams)) => {
+                if streams.is_empty() {
+                    return Err("XREAD: expected non-empty array".to_string());
+                }
+                for (i, se) in streams.iter().enumerate() {
+                    match se {
+                        RespType::Array(Some(parts)) if parts.len() == 2 => {}
+                        _ => return Err(format!(
+                            "XREAD stream {}: expected Array[2], got {}", i, se)),
+                    }
+                }
+                Ok(())
+            }
+            _ => Err(format!("XREAD: expected Array, got {}", r)),
+        }
+    }
+
+    pub async fn test_xread_count(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["XREAD", "COUNT", "1", "STREAMS", "test_rs:s2", "0"]).await?;
+        match &r {
+            RespType::Array(Some(streams)) => {
+                if streams.is_empty() {
+                    return Err("XREAD COUNT: expected non-empty array".to_string());
+                }
+                Ok(())
+            }
+            _ => Err(format!("XREAD COUNT: expected Array, got {}", r)),
+        }
+    }
+
+    pub async fn test_xread_multi_key(client: &mut RedisClient) -> Result<(), String> {
+        let r = client.cmd(&["XREAD", "STREAMS", "test_rs:s1", "test_rs:s2", "0", "0"]).await?;
+        match &r {
+            RespType::Array(Some(streams)) => {
+                if streams.len() < 2 {
+                    return Err(format!(
+                        "XREAD multi: expected >= 2 streams, got {}", streams.len()));
+                }
+                Ok(())
+            }
+            _ => Err(format!("XREAD multi: expected Array, got {}", r)),
+        }
+    }
+
+    pub async fn test_wrongtype_xadd_on_string(client: &mut RedisClient) -> Result<(), String> {
+        let _ = client.cmd(&["SET", "test_rs:stream_wt", "val"]).await?;
+        let r = client.cmd(&["XADD", "test_rs:stream_wt", "*", "f", "v"]).await?;
+        match &r {
+            RespType::Error(msg) if msg.to_lowercase().contains("wrongtype") => Ok(()),
+            _ => Err(format!("XADD on string: expected WRONGTYPE, got {}", r)),
+        }
+    }
 }
 
 // ── Benchmark functions ────────────────────────────────────────────────
@@ -672,9 +1012,38 @@ pub const ALL_TESTS: &[TestDef] = &[
     TestDef { name: "BLPOP timeout",         category: "BLPOP",      category_filter: "BLPOP",      stages: "Stages 17-18" },
     TestDef { name: "BLPOP multi key",       category: "BLPOP",      category_filter: "BLPOP",      stages: "Stages 17-18" },
     TestDef { name: "BLPOP wakeup",          category: "BLPOP",      category_filter: "BLPOP",      stages: "Stages 17-18" },
+    TestDef { name: "BLPOP zero timeout with data", category: "BLPOP", category_filter: "BLPOP", stages: "Edge Cases" },
     // WRONGTYPE
     TestDef { name: "GET on list",           category: "WRONGTYPE",  category_filter: "WRONGTYPE",  stages: "Edge Cases" },
     TestDef { name: "LLEN on string",        category: "WRONGTYPE",  category_filter: "WRONGTYPE",  stages: "Edge Cases" },
+    TestDef { name: "RPUSH on string",       category: "WRONGTYPE",  category_filter: "WRONGTYPE",  stages: "Edge Cases" },
+    TestDef { name: "LPOP on string",        category: "WRONGTYPE",  category_filter: "WRONGTYPE",  stages: "Edge Cases" },
+    TestDef { name: "LRANGE on string",      category: "WRONGTYPE",  category_filter: "WRONGTYPE",  stages: "Edge Cases" },
+    TestDef { name: "BLPOP on string",       category: "WRONGTYPE",  category_filter: "WRONGTYPE",  stages: "Edge Cases" },
+    // Command
+    TestDef { name: "COMMAND",               category: "Command",    category_filter: "Command",    stages: "Registry" },
+    TestDef { name: "COMMAND INFO",          category: "Command",    category_filter: "Command",    stages: "Registry" },
+    TestDef { name: "COMMAND INFO specific", category: "Command",    category_filter: "Command",    stages: "Registry" },
+    TestDef { name: "COMMAND INFO nonexistent", category: "Command", category_filter: "Command",    stages: "Registry" },
+    TestDef { name: "COMMAND unknown subcommand", category: "Command", category_filter: "Command", stages: "Registry" },
+    // Server
+    TestDef { name: "FLUSHDB",               category: "Server",     category_filter: "Server",     stages: "Server" },
+    // Stream
+    TestDef { name: "XADD basic",               category: "Stream", category_filter: "Stream", stages: "Stream" },
+    TestDef { name: "XADD explicit ID",         category: "Stream", category_filter: "Stream", stages: "Stream" },
+    TestDef { name: "XADD sequence auto",       category: "Stream", category_filter: "Stream", stages: "Stream" },
+    TestDef { name: "XLEN",                     category: "Stream", category_filter: "Stream", stages: "Stream" },
+    TestDef { name: "XADD multiple",            category: "Stream", category_filter: "Stream", stages: "Stream" },
+    TestDef { name: "XRANGE full",              category: "Stream", category_filter: "Stream", stages: "Stream" },
+    TestDef { name: "XRANGE range",             category: "Stream", category_filter: "Stream", stages: "Stream" },
+    TestDef { name: "XRANGE count",             category: "Stream", category_filter: "Stream", stages: "Stream" },
+    TestDef { name: "XREVRANGE",                category: "Stream", category_filter: "Stream", stages: "Stream" },
+    TestDef { name: "XTRIM",                    category: "Stream", category_filter: "Stream", stages: "Stream" },
+    TestDef { name: "XDEL",                     category: "Stream", category_filter: "Stream", stages: "Stream" },
+    TestDef { name: "XREAD basic",              category: "Stream", category_filter: "Stream", stages: "Stream" },
+    TestDef { name: "XREAD count",              category: "Stream", category_filter: "Stream", stages: "Stream" },
+    TestDef { name: "XREAD multi key",          category: "Stream", category_filter: "Stream", stages: "Stream" },
+    TestDef { name: "WRONGTYPE XADD on string", category: "Stream", category_filter: "Stream", stages: "Stream" },
 ];
 
 pub struct BenchmarkDef {
@@ -732,8 +1101,35 @@ pub async fn run_test(name: &str, client: &mut RedisClient) -> Result<(), String
         "BLPOP timeout"          => functional_tests::test_blpop_timeout(client).await,
         "BLPOP multi key"        => functional_tests::test_blpop_multi_key(client).await,
         "BLPOP wakeup"           => functional_tests::test_blpop_wakeup(client).await,
+        "BLPOP zero timeout with data" => functional_tests::test_blpop_zero_timeout_with_data(client).await,
         "GET on list"            => functional_tests::test_wrongtype_get_on_list(client).await,
         "LLEN on string"         => functional_tests::test_wrongtype_llen_on_string(client).await,
+        "RPUSH on string"        => functional_tests::test_wrongtype_rpush_on_string(client).await,
+        "LPOP on string"         => functional_tests::test_wrongtype_lpop_on_string(client).await,
+        "LRANGE on string"       => functional_tests::test_wrongtype_lrange_on_string(client).await,
+        "BLPOP on string"        => functional_tests::test_wrongtype_blpop_on_string(client).await,
+        "COMMAND"                => functional_tests::test_command_plain(client).await,
+        "COMMAND INFO"           => functional_tests::test_command_info_all(client).await,
+        "COMMAND INFO specific"  => functional_tests::test_command_info_specific(client).await,
+        "COMMAND INFO nonexistent" => functional_tests::test_command_info_nonexistent(client).await,
+        "COMMAND unknown subcommand" => functional_tests::test_command_unknown_subcommand(client).await,
+        "FLUSHDB"                => functional_tests::test_flushdb(client).await,
+        // Stream
+        "XADD basic"               => functional_tests::test_xadd_basic(client).await,
+        "XADD explicit ID"         => functional_tests::test_xadd_explicit_id(client).await,
+        "XADD sequence auto"       => functional_tests::test_xadd_sequence_auto(client).await,
+        "XLEN"                     => functional_tests::test_xlen(client).await,
+        "XADD multiple"            => functional_tests::test_xadd_multiple(client).await,
+        "XRANGE full"              => functional_tests::test_xrange_full(client).await,
+        "XRANGE range"             => functional_tests::test_xrange_range(client).await,
+        "XRANGE count"             => functional_tests::test_xrange_count(client).await,
+        "XREVRANGE"                => functional_tests::test_xrevrange(client).await,
+        "XTRIM"                    => functional_tests::test_xtrim(client).await,
+        "XDEL"                     => functional_tests::test_xdel(client).await,
+        "XREAD basic"              => functional_tests::test_xread_basic(client).await,
+        "XREAD count"              => functional_tests::test_xread_count(client).await,
+        "XREAD multi key"          => functional_tests::test_xread_multi_key(client).await,
+        "WRONGTYPE XADD on string"  => functional_tests::test_wrongtype_xadd_on_string(client).await,
         _ => Err(format!("unknown test: {name}")),
     }
 }
