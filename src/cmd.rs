@@ -13,15 +13,41 @@ use crate::resp;
 #[derive(Debug, PartialEq)]
 pub enum ParsedCmd {
     Ping,
-    Echo { message: String },
-    Set { key: String, value: String, expiry: Option<Duration> },
-    Get { key: String },
-    Rpush { key: String, values: Vec<String> },
-    Lpush { key: String, values: Vec<String> },
-    Lrange { key: String, start: i64, stop: i64 },
-    Llen { key: String },
-    Lpop { key: String, count: Option<usize> },
-    Blpop { keys: Vec<String>, timeout: u64 },
+    Echo {
+        message: String,
+    },
+    Set {
+        key: String,
+        value: String,
+        expiry: Option<Duration>,
+    },
+    Get {
+        key: String,
+    },
+    Rpush {
+        key: String,
+        values: Vec<String>,
+    },
+    Lpush {
+        key: String,
+        values: Vec<String>,
+    },
+    Lrange {
+        key: String,
+        start: i64,
+        stop: i64,
+    },
+    Llen {
+        key: String,
+    },
+    Lpop {
+        key: String,
+        count: Option<usize>,
+    },
+    Blpop {
+        keys: Vec<String>,
+        timeout: u64,
+    },
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -41,7 +67,9 @@ fn wrong_arg_count(cmd: &str) -> CmdError {
 }
 
 fn wrong_type() -> resp::RespType {
-    resp::RespType::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string())
+    resp::RespType::Error(
+        "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
+    )
 }
 
 impl ParsedCmd {
@@ -49,7 +77,10 @@ impl ParsedCmd {
         Ok(match cmd {
             "PING" => ParsedCmd::Ping,
             "ECHO" => {
-                let message = args.into_iter().next().ok_or_else(|| wrong_arg_count("echo"))?;
+                let message = args
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| wrong_arg_count("echo"))?;
                 ParsedCmd::Echo { message }
             }
             "SET" => {
@@ -64,9 +95,9 @@ impl ParsedCmd {
                         "PX" => Duration::from_millis(
                             val.parse().map_err(|_| CmdError::InvalidInteger)?,
                         ),
-                        "EX" => Duration::from_secs(
-                            val.parse().map_err(|_| CmdError::InvalidInteger)?,
-                        ),
+                        "EX" => {
+                            Duration::from_secs(val.parse().map_err(|_| CmdError::InvalidInteger)?)
+                        }
                         _ => return Err(CmdError::SyntaxError),
                     }),
                     (None, None) => None,
@@ -75,7 +106,10 @@ impl ParsedCmd {
                 ParsedCmd::Set { key, value, expiry }
             }
             "GET" => {
-                let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("get"))?;
+                let key = args
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| wrong_arg_count("get"))?;
                 ParsedCmd::Get { key }
             }
             "RPUSH" => {
@@ -102,12 +136,23 @@ impl ParsedCmd {
                 }
                 let mut iter = args.into_iter();
                 let key = iter.next().unwrap();
-                let start: i64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
-                let stop: i64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                let start: i64 = iter
+                    .next()
+                    .unwrap()
+                    .parse()
+                    .map_err(|_| CmdError::InvalidInteger)?;
+                let stop: i64 = iter
+                    .next()
+                    .unwrap()
+                    .parse()
+                    .map_err(|_| CmdError::InvalidInteger)?;
                 ParsedCmd::Lrange { key, start, stop }
             }
             "LLEN" => {
-                let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("llen"))?;
+                let key = args
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| wrong_arg_count("llen"))?;
                 ParsedCmd::Llen { key }
             }
             "LPOP" => {
@@ -215,7 +260,7 @@ fn handle_get(key: &str) -> resp::RespType {
             } else {
                 match entry.value.clone() {
                     Value::String(v) => resp::RespType::BulkString(Some(v)),
-                    Value::List(_) => wrong_type(),
+                    _ => wrong_type(),
                 }
             }
         }
@@ -332,7 +377,10 @@ fn handle_lpop(key: &str, count: Option<usize>) -> resp::RespType {
                 }
                 match count {
                     // No count arg -> single BulkString (like Redis LPOP)
-                    None => popped.into_iter().next().unwrap_or(resp::RespType::BulkString(None)),
+                    None => popped
+                        .into_iter()
+                        .next()
+                        .unwrap_or(resp::RespType::BulkString(None)),
                     // Count specified -> always Array
                     Some(_) if popped.is_empty() => resp::RespType::Array(None),
                     Some(_) => resp::RespType::Array(Some(popped)),
@@ -363,12 +411,14 @@ pub fn try_blpop(keys: &[String]) -> Option<resp::RespType> {
                                 db.remove(key);
                             }
                             return Some(resp::RespType::Array(Some(vec![
-                                resp::RespType::BulkString(Some(Bytes::copy_from_slice(key.as_bytes()))),
+                                resp::RespType::BulkString(Some(Bytes::copy_from_slice(
+                                    key.as_bytes(),
+                                ))),
                                 resp::RespType::BulkString(Some(val)),
                             ])));
                         }
                     }
-                    Value::String(_) => return Some(wrong_type()),
+                    _ => return Some(wrong_type()),
                 },
             }
         }
@@ -393,10 +443,9 @@ async fn handle_blpop(keys: &[String], timeout: u64) -> resp::RespType {
         } else {
             let notified = notify.notified();
             tokio::pin!(notified);
-            let timed_out =
-                tokio::time::timeout(Duration::from_secs(timeout), notified)
-                    .await
-                    .is_err();
+            let timed_out = tokio::time::timeout(Duration::from_secs(timeout), notified)
+                .await
+                .is_err();
             if timed_out {
                 drop(guard);
                 return resp::RespType::Array(None);
