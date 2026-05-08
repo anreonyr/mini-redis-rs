@@ -5,7 +5,9 @@
       "Bash(cargo build *)",
       "Bash(taskkill /f /im mini-redis.exe)",
       "Bash(cargo check *)",
-      "Bash(rustc --version)"
+      "Bash(rustc --version)",
+      "Bash(cargo run *)",
+      "PowerShell(Get-Process *)"
     ]
   }
 }

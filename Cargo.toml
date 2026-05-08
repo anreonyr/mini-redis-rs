@@ -1,3 +1,5 @@
 [workspace]
 resolver = "3"
 members = ["mini-redis", "test-tools"]
+
+default-run = "mini-redis"

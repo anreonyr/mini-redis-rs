@@ -6,67 +6,121 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Build all:** `cargo build --release`
 - **Run server:** `cargo run --release` or `./your_program.sh` (listens on `127.0.0.1:6379`)
-- **Run feature tests:** `cargo run --release --bin test_redis` (needs server running)
-- **Run stress test:** `cargo run --release --bin stress_redis`
-- **Run TUI test selector:** `cargo run --release --bin tui_redis`
+- **Run integration tests:** `cargo run --release --bin test_redis` (needs server running)
+- **Filter tests by category/subcategory:** `cargo run --release --bin test_redis -- BLPOP List stream`
+- **Run benchmarks:** `cargo run --release --bin stress_redis`
+- **Filter benchmarks:** `cargo run --release --bin stress_redis -- large_value`
+- **Launch TUI test selector:** `cargo run --release --bin tui_redis`
 - **Run unit tests:** `cargo test`
-- **Run a single unit test:** `cargo test test_name`
+- **Run single unit test:** `cargo test test_name`
 
 ## Workspace Structure
 
 ```
-Cargo.toml                  # workspace root (pure workspace, resolver = "3")
-mini-redis/                 # mini-redis crate — the Redis server
-test-tools/                 # test-tools crate — test/benchmark/tui binaries
+Cargo.toml                        # workspace root (resolver = "3")
+mini-redis/                       # the Redis server implementation
+test-tools/                       # test/benchmark/TUI crate
+  src/
+    lib.rs                        # shared logic: RedisClient, test defs, dispatch
+    bin/
+      test_redis.rs               # CLI integration test runner
+      stress_redis.rs             # CLI benchmark runner
+      tui_redis.rs                # ratatui interactive TUI
+    tests/
+      connection.rs               # test functions by category
+      string.rs
+      expiry.rs
+      list.rs
+      blpop.rs
+      wrongtype.rs
+      command.rs
+      server.rs
+      stream.rs
 ```
 
-### mini-redis crate (`mini-redis`)
+## Architecture
 
-- **`main.rs`** — TCP server entry point. Binds `127.0.0.1:6379`, accepts connections in a loop, spawns one task per connection. Also spawns a background eviction task that removes expired keys every 1 second.
+### mini-redis crate
 
-- **`lib.rs`** — Re-exports 6 public modules: `resp`, `cmd`, `db`, `inline`, `blocking`, `registry`.
+- **`main.rs`** — TCP server entry. Protocol auto-detection per connection (first byte determines inline vs RESP mode). Spawns each connection as a separate task via `JoinSet`. Background eviction task removes expired keys every 1s.
 
-- **`resp.rs`** — RESP wire protocol. `RespType` enum (`SimpleString`, `Error`, `Integer`, `BulkString`, `Array`) with `serialize() -> Vec<u8>` and `Display`. `Decoder` parses bytes into complete frames, returns `DecodeError::Incomplete` when more data is needed. This is the only module used by the test-tools crate.
+- **`lib.rs`** — Re-exports 6 modules: `resp`, `cmd`, `db`, `inline`, `blocking`, `registry`.
 
-- **`cmd.rs`** — Command parsing + dispatch. `ParsedCmd` enum with variants for each command. `parse_command()` extracts cmd+args from a `RespType::Array`. `dispatch_command()` routes to handler functions. Each handler reads/writes the global DB via `with_db()`.
+- **`resp.rs`** — RESP wire protocol. `RespType` enum (`SimpleString`, `Error`, `Integer`, `BulkString`, `Array`) with `serialize() -> Vec<u8>`. Stateless `Decoder` parsing bytes into frames, returns `DecodeError::Incomplete` when more data is needed.
 
-- **`db.rs`** — Global in-memory KV store: `LazyLock<Mutex<HashMap<String, Entry>>>`. `Value` enum has 5 variants: `String(Bytes)`, `List(VecDeque<Bytes>)`, `Hash`, `Set`, `ZSet` (latter 3 unused stubs). `Entry` contains `value` + optional expiry `Instant`. Access via `with_db()` closure helper.
+- **`cmd.rs`** — Command parsing + dispatch. `ParsedCmd` enum (18+ variants for all commands). `parse()` validates arguments; `dispatch_command()` routes to handler functions. Handlers access global DB via `with_db()`.
 
-- **`inline.rs`** — Telnet inline protocol support. `strip_iac()` removes Telnet negotiation bytes (0xFF). `apply_backspace()` handles backspace (0x08) and DEL (0x7F). `find_line()` locates line delimiters (\r\n or \n). `parse_quoted_args()` splits by whitespace respecting quoted strings.
+- **`db.rs`** — Global in-memory KV store: `LazyLock<Mutex<HashMap<String, Entry>>>`. `Value` enum variants: `String(Bytes)`, `List(VecDeque<Bytes>)`, `Stream(StreamData)`, `Hash`, `Set`, `ZSet` (latter 3 unused stubs). `Entry` contains `value` + optional expiry `Instant`. Access only via `with_db(|db| ...)`, never hold the Mutex lock across `.await`.
 
-- **`blocking.rs`** — BLPOP blocking waiter registry. `register()` inserts a `Weak<Notify>` per key, returns a `BlpopGuard` that auto-unregisters on drop. `notify_waiters()` wakes all live waiters for a key and cleans stale entries.
+- **`inline.rs`** — Telnet inline protocol. `strip_iac()` removes Telnet negotiation bytes. `apply_backspace()` handles backspace/DEL. `parse_quoted_args()` splits by whitespace with quote support.
 
-- **`registry.rs`** — Command introspection registry. `CommandRegistry` with `HashMap<String, CommandInfo>`. `init()` registers 12 commands (PING through FLUSHDB) with name, arity, category, stage. `COMMAND` query is handled via `with_registry()`.
+- **`blocking.rs`** — BLPOP blocking waiter registry. `register()` inserts `Weak<Notify>` per key, returns `BlpopGuard` (auto-unregisters on drop). `notify_waiters()` wakes live waiters.
+
+- **`registry.rs`** — Command introspection. `init()` registers 22 commands with name/arity/category/stage. COMMAND INFO queries use `with_registry()`.
 
 ### test-tools crate
 
-- **`test_redis.rs`** — 39 integration tests across 6 categories (Connection, String, Expiry, List, BLPOP, WRONGTYPE). Uses a `RedisClient` struct wrapping `TcpStream` + `Decoder`. Tests connect to localhost:6379, send RESP commands, assert responses. Accepts CLI filters: `cargo run --bin test_redis -- BLPOP List`.
+Tests and benchmarks are defined declaratively in `lib.rs` via the `tree_tests!` macro:
 
-- **`stress_redis.rs`** — Benchmarks: SET+GET throughput, large values (1KB-100KB), many keys, concurrent connections, large list RPUSH+LRANGE. Reports QPS and latency.
+```rust
+tree_tests! {
+    "Base" => "Base" [
+        _ "Connection" ["PING" => test_ping, ...]
+        _ "String"     [...]
+        _ "Expiry"     [...]
+        _ "BLPOP"      [...]
+        _ "WRONGTYPE"  [...]
+        _ "Command"    [...]
+        _ "Server"     [...]
+    ]
+    "List" => "List" [
+        "Basic" => "Stages 8-16" [test_rpush_new_key, ...]
+        "LRANGE"                  [...]
+        "LPOP"                    [...]
+    ]
+    "Stream" => "Stream" [
+        "XADD"   => "Stage 20"  [test_xadd_basic, ...]
+        "XLEN"                   [...]
+        "XRANGE"                 [...]
+        ...
+    ]
+}
+```
 
-- **`tui_redis.rs`** — ratatui-based interactive test selector. Three screens: Select (checkbox list), Running (live streaming output via mpsc background thread), Results (scrollable). Spawns `test_redis` as a subprocess.
+This generates:
+- `ALL_TESTS: &[TestDef]` — flat array of all 58 test definitions with name, category, subcategory, filter, stages
+- `pub async fn run_test(def: &TestDef, client: &mut RedisClient) -> Result<(), String>` — dispatch function
+
+Actual test function implementations live in `test-tools/src/tests/` (9 modules, one per category).
+
+**Three binary entry points:**
+
+- **`test_redis.rs`** — Connects to running server, iterates `ALL_TESTS` with CLI filtering, prints colored PASS/FAIL. Exit code 1 if any test fails.
+- **`stress_redis.rs`** — Runs selected benchmarks (throughput, large_value, many_keys, concurrent, list). Reports ops, QPS, latency.
+- **`tui_redis.rs`** — Ratatui TUI with three screens: Select (tree checkboxes with expand/collapse), Running (live streaming), Results (scrollable). Runs tests directly via `tokio::runtime::Runtime::spawn` + `mpsc::channel` (no subprocess). Tab toggles functional/stress mode.
 
 ## Key Patterns
 
-- **All DB access** goes through `db::with_db(|db| { ... })` — never hold the Mutex lock across `.await` points.
-- **Commands** are defined in `ParsedCmd::parse()` (string → enum) and dispatched in `dispatch_command()` (enum → handler function).
-- **Communication protocol**: two modes auto-detected per connection — inline (telnet-style, `inline.rs`) and RESP (binary, `resp.rs`).
-- **BLPOP blocking** uses `tokio::sync::Notify` + `Weak<Notify>` registry to avoid holding the DB lock while waiting.
+- **DB access**: `db::with_db(|db| { ... })` — never hold the Mutex across `.await`.
+- **Registry access**: `registry::with_registry(|r| { ... })` — same pattern.
+- **Blocking lists**: BLPOP uses `tokio::sync::Notify` + `Weak<Notify>` registry to avoid holding DB lock while waiting.
+- **Protocol detection**: Per-connection, based on first byte. Sticky for connection lifetime.
+- **Commands** are defined in `ParsedCmd::parse()` (string → enum) and dispatched in `dispatch_command()` (enum → handler).
 
-## TDD 工作方式（练习用）
+## TDD Workflow
 
-本项目的目的是练习实现 Redis 命令，采用测试驱动开发（TDD）方式：
+This project is a Redis implementation exercise using TDD:
 
-1. **先写测试 + 基础设施**：添加新功能时，只实现：
-   - `ParsedCmd` 枚举变体（命令定义）
-   - 命令解析逻辑（`parse()` 中的 match arm）
-   - `Value` 枚举变体（数据类型定义）
-   - `db.rs` 中的数据结构（如 `StreamEntry`、`StreamData`）
-   - `registry.rs` 注册条目
-   - `test-tools` 中的测试函数、TestDef、dispatch
+1. **Write tests + scaffolding first**: When adding a new feature, implement only:
+   - `ParsedCmd` enum variant
+   - Command parsing in `parse()`
+   - `Value` enum variant if needed
+   - Data structures in `db.rs`
+   - `registry.rs` entry
+   - Test function in `test-tools/src/tests/`, entry in `tree_tests!` macro
 
-2. **handler 返回 stub**：新的命令 handler 只返回 `"ERR not implemented"` 错误，不实现真正的功能逻辑。
+2. **Handler returns stub**: New command handlers return `"ERR not implemented"`.
 
-3. **用户练习实现**：用户自己实现 handler 中的功能逻辑，让测试从红变绿。
+3. **User implements handler logic**: Making tests go from red to green.
 
-这样用户可以专注于练习核心算法（ID 生成、范围查询、裁剪等），而不需要搭建解析、路由、测试框架等脚手架。
+This way the user focuses on core algorithms (stream ID generation, range queries, trimming, etc.) without setting up parsing, routing, and test infrastructure.

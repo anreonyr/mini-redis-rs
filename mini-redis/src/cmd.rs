@@ -760,12 +760,6 @@ fn make_stream_entry(id: String, fields: Vec<(Bytes, Bytes)>) -> resp::RespType 
 // ── Stream command handlers ───────────────────────────────────────────
 
 fn handle_xadd(key: &str, id_spec: &str, field_args: &[String]) -> resp::RespType {
-    if field_args.len() < 2 || field_args.len() % 2 != 0 {
-        return resp::RespType::Error(
-            "ERR wrong number of arguments for 'xadd'".to_string(),
-        );
-    }
-
     let fields: Vec<(Bytes, Bytes)> = field_args
         .chunks(2)
         .map(|c| (Bytes::from(c[0].clone()), Bytes::from(c[1].clone())))

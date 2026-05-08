@@ -13,7 +13,7 @@ use std::time::Duration;
 use test_tools::{ALL_TESTS, BENCHMARKS, run_test, run_bench, TestResult, BenchResult, RedisClient};
 use tokio::runtime::Runtime;
 
-// ── Category definitions ────────────────────────────────────────────────────
+// ── Category definitions (metadata only) ─────────────────────────────────
 
 struct Category {
     name: &'static str,
@@ -22,22 +22,73 @@ struct Category {
 }
 
 const CATEGORIES: &[Category] = &[
-    Category { name: "Connection", stages: "Stages 1-5",  filters: &["Connection"] },
-    Category { name: "String",     stages: "Stage 6",      filters: &["String"] },
-    Category { name: "Expiry",     stages: "Stage 7",      filters: &["Expiry"] },
-    Category { name: "List",       stages: "Stages 8-16",  filters: &["List"] },
-    Category { name: "BLPOP",      stages: "Stages 17-18", filters: &["BLPOP"] },
-    Category { name: "WRONGTYPE",  stages: "Edge Cases",   filters: &["WRONGTYPE"] },
+    Category { name: "Base",       stages: "Base",    filters: &["Base"] },
+    Category { name: "List",       stages: "List",    filters: &["List"] },
+    Category { name: "Stream",     stages: "Stream",  filters: &["Stream"] },
 ];
 
-// ── Message types for background task communication ────────────────────────
+// ── Hierarchical select items ────────────────────────────────────────────
+
+#[derive(Clone)]
+enum FilterSpec {
+    Category(&'static str),
+    Subcategory(&'static str, &'static str),
+}
+
+/// Maps index into the visible flat list to actual item
+#[derive(Clone, Copy)]
+struct VisibleItem {
+    cat_idx: usize,
+    sub_idx: Option<usize>,  // None = category row, Some = subcategory row
+}
+
+/// Pre-computed subcategory info per category
+struct SubcatInfo {
+    labels: Vec<&'static str>,   // subcategory names, sorted, deduped
+    counts: Vec<usize>,          // test count per subcategory
+}
+
+fn build_subcat_info() -> Vec<SubcatInfo> {
+    let mut result = Vec::new();
+    for cat in CATEGORIES {
+        let mut subs: Vec<&str> = ALL_TESTS.iter()
+            .filter(|t| t.category_filter == cat.filters[0] && t.subcategory.is_some())
+            .map(|t| t.subcategory.unwrap())
+            .collect();
+        subs.sort();
+        subs.dedup();
+        let counts: Vec<usize> = subs.iter().map(|&sub|
+            ALL_TESTS.iter()
+                .filter(|t| t.category_filter == cat.filters[0] && t.subcategory == Some(sub))
+                .count()
+        ).collect();
+        result.push(SubcatInfo { labels: subs, counts });
+    }
+    result
+}
+
+/// Build visible items for the current frame based on expanded state
+fn visible_items(expanded: &[bool], subcat_info: &[SubcatInfo]) -> Vec<VisibleItem> {
+    let mut v = Vec::new();
+    for ci in 0..CATEGORIES.len() {
+        v.push(VisibleItem { cat_idx: ci, sub_idx: None });
+        if expanded[ci] {
+            for si in 0..subcat_info[ci].labels.len() {
+                v.push(VisibleItem { cat_idx: ci, sub_idx: Some(si) });
+            }
+        }
+    }
+    v
+}
+
+// ── Message types for background task communication ──────────────────────
 
 enum UiMsg {
     Line(String),
     Done,
 }
 
-// ── Mode ────────────────────────────────────────────────────────────────────
+// ── Mode ─────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, PartialEq)]
 enum Mode {
@@ -45,7 +96,7 @@ enum Mode {
     Stress,
 }
 
-// ── App state ───────────────────────────────────────────────────────────────
+// ── App state ────────────────────────────────────────────────────────────
 
 enum Screen {
     Select,
@@ -57,8 +108,19 @@ struct App {
     screen: Screen,
     mode: Mode,
     list_state: ListState,
-    checked: Vec<bool>,
+
+    // Selection state (one per CATEGORIES)
+    cat_checked: Vec<bool>,
+    expanded: Vec<bool>,
+    sub_checked: Vec<Vec<bool>>,   // [cat_idx][sub_idx]
+
+    // Pre-computed caches
+    subcat_info: Vec<SubcatInfo>,
+
+    // Stress mode
     stress_checked: Vec<bool>,
+
+    // Output / results
     output_lines: Vec<String>,
     results: Vec<TestResult>,
     bench_results: Vec<BenchResult>,
@@ -72,11 +134,19 @@ impl App {
     fn new() -> Self {
         let mut list_state = ListState::default();
         list_state.select(Some(0));
+        let subcat_info = build_subcat_info();
+        let cat_checked = vec![true; CATEGORIES.len()];
+        let sub_checked: Vec<Vec<bool>> = subcat_info.iter()
+            .map(|info| vec![true; info.labels.len()])
+            .collect();
         Self {
             screen: Screen::Select,
             mode: Mode::Functional,
             list_state,
-            checked: vec![true; CATEGORIES.len()],
+            cat_checked,
+            expanded: subcat_info.iter().map(|info| !info.labels.is_empty()).collect(),
+            sub_checked,
+            subcat_info,
             stress_checked: vec![true; BENCHMARKS.len()],
             output_lines: Vec::new(),
             results: Vec::new(),
@@ -88,55 +158,115 @@ impl App {
         }
     }
 
+    fn visible(&self) -> Vec<VisibleItem> {
+        visible_items(&self.expanded, &self.subcat_info)
+    }
+
+    fn visible_count(&self) -> usize {
+        self.visible().len()
+    }
+
     fn toggle_current(&mut self) {
-        if let Some(i) = self.list_state.selected() {
-            match self.mode {
-                Mode::Functional => {
-                    if i < self.checked.len() {
-                        self.checked[i] = !self.checked[i];
+        let vi = self.visible();
+        let idx = match self.list_state.selected() {
+            Some(i) if i < vi.len() => i,
+            _ => return,
+        };
+        let item = vi[idx];
+        match item.sub_idx {
+            None => {
+                if item.cat_idx < self.cat_checked.len() {
+                    let new_val = !self.cat_checked[item.cat_idx];
+                    self.cat_checked[item.cat_idx] = new_val;
+                    for si in 0..self.subcat_info[item.cat_idx].labels.len() {
+                        if si < self.sub_checked[item.cat_idx].len() {
+                            self.sub_checked[item.cat_idx][si] = new_val;
+                        }
                     }
                 }
-                Mode::Stress => {
-                    if i < self.stress_checked.len() {
-                        self.stress_checked[i] = !self.stress_checked[i];
-                    }
+            }
+            Some(si) => {
+                if item.cat_idx < self.sub_checked.len() && si < self.sub_checked[item.cat_idx].len() {
+                    self.sub_checked[item.cat_idx][si] = !self.sub_checked[item.cat_idx][si];
+                    let all_checked = self.subcat_info[item.cat_idx].labels.iter().enumerate()
+                        .all(|(i, _)| self.sub_checked[item.cat_idx][i]);
+                    self.cat_checked[item.cat_idx] = all_checked;
                 }
             }
         }
     }
 
+    fn expand_current(&mut self) {
+        let vi = self.visible();
+        let idx = match self.list_state.selected() {
+            Some(i) if i < vi.len() => i,
+            _ => return,
+        };
+        let item = vi[idx];
+        if item.sub_idx.is_none() && !self.subcat_info[item.cat_idx].labels.is_empty() {
+            self.expanded[item.cat_idx] = true;
+        }
+    }
+
+    fn collapse_current(&mut self) {
+        let vi = self.visible();
+        let idx = match self.list_state.selected() {
+            Some(i) if i < vi.len() => i,
+            _ => return,
+        };
+        let item = vi[idx];
+        if item.sub_idx.is_none() {
+            self.expanded[item.cat_idx] = false;
+        }
+    }
+
     fn select_all(&mut self, val: bool) {
-        match self.mode {
-            Mode::Functional => {
-                for c in &mut self.checked {
-                    *c = val;
-                }
-            }
-            Mode::Stress => {
-                for c in &mut self.stress_checked {
-                    *c = val;
-                }
+        for c in &mut self.cat_checked {
+            *c = val;
+        }
+        for row in &mut self.sub_checked {
+            for c in row {
+                *c = val;
             }
         }
     }
 
     fn selected_count(&self) -> usize {
-        match self.mode {
-            Mode::Functional => {
-                let selected_filters: Vec<&str> = CATEGORIES.iter().enumerate()
-                    .filter(|(i, _)| self.checked[*i])
-                    .flat_map(|(_, c)| c.filters.iter().copied())
-                    .collect();
-                ALL_TESTS.iter().filter(|t| selected_filters.contains(&t.category_filter)).count()
-            }
-            Mode::Stress => {
-                self.stress_checked.iter().filter(|&c| *c).count()
+        let mut total = 0;
+        for (ci, cat) in CATEGORIES.iter().enumerate() {
+            if self.cat_checked[ci] {
+                total += ALL_TESTS.iter().filter(|t| t.category_filter == cat.filters[0]).count();
+            } else {
+                for (si, _) in self.subcat_info[ci].labels.iter().enumerate() {
+                    if self.sub_checked[ci][si] {
+                        total += ALL_TESTS.iter()
+                            .filter(|t| t.category_filter == cat.filters[0]
+                                && t.subcategory == Some(self.subcat_info[ci].labels[si]))
+                            .count();
+                    }
+                }
             }
         }
+        total
+    }
+
+    fn selected_filter_specs(&self) -> Vec<FilterSpec> {
+        let mut specs = Vec::new();
+        for (ci, cat) in CATEGORIES.iter().enumerate() {
+            if self.cat_checked[ci] {
+                specs.push(FilterSpec::Category(cat.filters[0]));
+            } else {
+                for (si, &sub) in self.subcat_info[ci].labels.iter().enumerate() {
+                    if self.sub_checked[ci][si] {
+                        specs.push(FilterSpec::Subcategory(cat.filters[0], sub));
+                    }
+                }
+            }
+        }
+        specs
     }
 
     fn start_tests(&mut self, rt: &Runtime) {
-        // Abort any previously running task
         if let Some(h) = self.test_join.take() {
             h.abort();
         }
@@ -153,13 +283,10 @@ impl App {
 
         match self.mode {
             Mode::Functional => {
-                let cats: Vec<String> = CATEGORIES.iter().enumerate()
-                    .filter(|(i, _)| self.checked[*i])
-                    .flat_map(|(_, c)| c.filters.iter().map(|f| f.to_string()))
-                    .collect();
+                let filter_specs = self.selected_filter_specs();
 
-                if cats.is_empty() {
-                    self.output_lines.push("[WARN] No categories selected. Press B to go back.".to_string());
+                if filter_specs.is_empty() {
+                    self.output_lines.push("[WARN] No items selected. Press B to go back.".to_string());
                     self.screen = Screen::Results;
                     return;
                 }
@@ -182,22 +309,35 @@ impl App {
                     }
 
                     let mut current_cat = "";
+                    let mut current_subcat = "";
                     let mut passed = 0u32;
                     let mut failed = 0u32;
 
-                    for test in ALL_TESTS.iter().filter(|t| cats.iter().any(|c| c == t.category_filter)) {
+                    for test in ALL_TESTS.iter().filter(|t| {
+                        filter_specs.iter().any(|fs| match fs {
+                            FilterSpec::Category(cat) => t.category_filter == *cat,
+                            FilterSpec::Subcategory(cat, sub) => t.category_filter == *cat && t.subcategory == Some(sub),
+                        })
+                    }) {
                         if test.category != current_cat {
                             current_cat = test.category;
+                            current_subcat = "";
                             let _ = tx_clone.send(UiMsg::Line(format!("\n[{}]", test.category)));
                         }
-                        match run_test(test.name, &mut client).await {
+                        if test.subcategory.is_some() && test.subcategory != Some(current_subcat) {
+                            let sc = test.subcategory.unwrap_or("");
+                            let _ = tx_clone.send(UiMsg::Line(format!("  [{sc}]")));
+                            current_subcat = sc;
+                        }
+                        let indent = if test.subcategory.is_some() { "    " } else { "  " };
+                        match run_test(test, &mut client).await {
                             Ok(()) => {
-                                let _ = tx_clone.send(UiMsg::Line(format!("  [PASS] {}", test.name)));
+                                let _ = tx_clone.send(UiMsg::Line(format!("{indent}[PASS] {}", test.name)));
                                 passed += 1;
                             }
                             Err(e) => {
-                                let _ = tx_clone.send(UiMsg::Line(format!("  [FAIL] {}", test.name)));
-                                let _ = tx_clone.send(UiMsg::Line(format!("         {e}")));
+                                let _ = tx_clone.send(UiMsg::Line(format!("{indent}[FAIL] {}", test.name)));
+                                let _ = tx_clone.send(UiMsg::Line(format!("           {e}")));
                                 failed += 1;
                             }
                         }
@@ -298,7 +438,7 @@ impl App {
     }
 }
 
-// ── UI rendering ────────────────────────────────────────────────────────────
+// ── UI rendering ─────────────────────────────────────────────────────────
 
 fn draw_select(f: &mut Frame, app: &mut App) {
     let area = f.area();
@@ -312,7 +452,7 @@ fn draw_select(f: &mut Frame, app: &mut App) {
         ])
         .split(area);
 
-    // ── Title with mode tabs ────────────────────────────────────────────
+    // ── Title with mode tabs ──────────────────────────────────────────
 
     let (mode_func, mode_stress) = match app.mode {
         Mode::Functional => (
@@ -353,36 +493,78 @@ fn draw_select(f: &mut Frame, app: &mut App) {
     .block(Block::default().borders(Borders::ALL));
     f.render_widget(title, chunks[0]);
 
-    // ── Content ─────────────────────────────────────────────────────────
+    // ── Content ───────────────────────────────────────────────────────
 
     match app.mode {
         Mode::Functional => {
-            let items: Vec<ListItem> = CATEGORIES
-                .iter()
-                .enumerate()
-                .map(|(i, cat)| {
-                    let check = if app.checked[i] { "[x]" } else { "[ ]" };
-                    let count = ALL_TESTS.iter().filter(|t| t.category_filter == cat.filters[0]).count();
-                    ListItem::new(Line::from(vec![
-                        Span::styled(
-                            format!(" {}  {:<12}", check, cat.name),
-                            Style::default().fg(if app.checked[i] {
-                                Color::Green
-                            } else {
-                                Color::Gray
-                            }),
-                        ),
-                        Span::styled(
-                            format!("  ({})", cat.stages),
-                            Style::default().fg(Color::DarkGray),
-                        ),
-                        Span::styled(
-                            format!("  {} tests", count),
-                            Style::default().fg(Color::DarkGray),
-                        ),
-                    ]))
-                })
-                .collect();
+            let vi = app.visible();
+            let items: Vec<ListItem> = vi.iter().map(|vitem| {
+                let is_cat = vitem.sub_idx.is_none();
+                let (checked, has_subcats) = if is_cat {
+                    (app.cat_checked[vitem.cat_idx], !app.subcat_info[vitem.cat_idx].labels.is_empty())
+                } else {
+                    let si = vitem.sub_idx.unwrap();
+                    (app.sub_checked[vitem.cat_idx][si], false)
+                };
+                let is_expanded = is_cat && app.expanded[vitem.cat_idx];
+                let has_partial = is_cat && has_subcats && !checked
+                    && app.sub_checked[vitem.cat_idx].iter().any(|&c| c);
+
+                let check = if has_partial { "[-]" } else if checked { "[x]" } else { "[ ]" };
+                let expand_mark = if has_subcats {
+                    if is_expanded { "▼" } else { "▶" }
+                } else {
+                    " "
+                };
+                let prefix = if is_cat { "" } else { "  " };
+
+                let color = if checked {
+                    if is_cat { Color::Green } else { Color::Cyan }
+                } else if has_partial {
+                    Color::Yellow
+                } else {
+                    Color::Gray
+                };
+
+                let label = if is_cat {
+                    CATEGORIES[vitem.cat_idx].name
+                } else {
+                    app.subcat_info[vitem.cat_idx].labels[vitem.sub_idx.unwrap()]
+                };
+
+                let mut spans = vec![
+                    Span::styled(
+                        format!(" {} {} {}{:<12}", check, expand_mark, prefix, label),
+                        Style::default().fg(color),
+                    ),
+                ];
+                if is_cat {
+                    spans.push(Span::styled(
+                        format!("  ({})", CATEGORIES[vitem.cat_idx].stages),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                }
+                if is_cat && !has_subcats {
+                    let total = ALL_TESTS.iter().filter(|t| t.category_filter == CATEGORIES[vitem.cat_idx].filters[0]).count();
+                    spans.push(Span::styled(
+                        format!("  {} tests", total),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                } else if is_cat && has_subcats {
+                    let total = ALL_TESTS.iter().filter(|t| t.category_filter == CATEGORIES[vitem.cat_idx].filters[0]).count();
+                    spans.push(Span::styled(
+                        format!("  {} tests", total),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                } else {
+                    let si = vitem.sub_idx.unwrap();
+                    spans.push(Span::styled(
+                        format!("  {} tests", app.subcat_info[vitem.cat_idx].counts[si]),
+                        Style::default().fg(Color::DarkGray),
+                    ));
+                }
+                ListItem::new(Line::from(spans))
+            }).collect();
 
             let list = List::new(items)
                 .block(Block::default().borders(Borders::NONE))
@@ -429,12 +611,11 @@ fn draw_select(f: &mut Frame, app: &mut App) {
         }
     }
 
-    // ── Summary ─────────────────────────────────────────────────────────
+    // ── Summary ───────────────────────────────────────────────────────
 
     let summary_text = match app.mode {
         Mode::Functional => {
-            let n = app.checked.iter().filter(|&c| *c).count();
-            format!(" Total: {} tests selected ({} categories)", app.selected_count(), n)
+            format!(" Total: {} tests selected", app.selected_count())
         }
         Mode::Stress => {
             let n = app.stress_checked.iter().filter(|&c| *c).count();
@@ -449,7 +630,7 @@ fn draw_select(f: &mut Frame, app: &mut App) {
     .block(Block::default().borders(Borders::ALL));
     f.render_widget(summary, chunks[2]);
 
-    // ── Help ────────────────────────────────────────────────────────────
+    // ── Help ──────────────────────────────────────────────────────────
 
     let help = match app.mode {
         Mode::Functional => Paragraph::new(Line::from(vec![
@@ -458,6 +639,8 @@ fn draw_select(f: &mut Frame, app: &mut App) {
             Span::styled(":Tog  ", Style::default().fg(Color::DarkGray)),
             Span::styled("Enter", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
             Span::styled(":Run  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("\u{2190}\u{2192}", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+            Span::styled(":Col/Exp  ", Style::default().fg(Color::DarkGray)),
             Span::styled("A", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             Span::styled(":All  ", Style::default().fg(Color::DarkGray)),
             Span::styled("N", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
@@ -609,7 +792,7 @@ fn draw_results(f: &mut Frame, app: &mut App) {
     f.render_widget(help, chunks[2]);
 }
 
-// ── Main ────────────────────────────────────────────────────────────────────
+// ── Main ─────────────────────────────────────────────────────────────────
 
 fn main() -> std::io::Result<()> {
     let rt = Runtime::new().unwrap();
@@ -655,6 +838,11 @@ fn main() -> std::io::Result<()> {
                         KeyCode::Char('a') | KeyCode::Char('A') => app.select_all(true),
                         KeyCode::Char('n') | KeyCode::Char('N') => app.select_all(false),
                         KeyCode::Char(' ') => app.toggle_current(),
+                        KeyCode::Enter => {
+                            app.start_tests(&rt);
+                        }
+                        KeyCode::Right | KeyCode::Char('l') => app.expand_current(),
+                        KeyCode::Left | KeyCode::Char('h') => app.collapse_current(),
                         KeyCode::Up | KeyCode::Char('k') => {
                             let i = app.list_state.selected().unwrap_or(0);
                             if i > 0 {
@@ -662,16 +850,11 @@ fn main() -> std::io::Result<()> {
                             }
                         }
                         KeyCode::Down | KeyCode::Char('j') => {
-                            let max = match app.mode {
-                                Mode::Functional => CATEGORIES.len(),
-                                Mode::Stress => BENCHMARKS.len(),
-                            };
                             let i = app.list_state.selected().unwrap_or(0);
-                            if i + 1 < max {
+                            if i + 1 < app.visible_count() {
                                 app.list_state.select(Some(i + 1));
                             }
                         }
-                        KeyCode::Enter => app.start_tests(&rt),
                         _ => {}
                     },
                     Screen::Results => match key.code {

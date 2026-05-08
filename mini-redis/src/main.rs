@@ -6,6 +6,8 @@ use anyhow::Context;
 use inline::{apply_backspace, find_line, parse_quoted_args, strip_iac};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::signal;
+use tokio::task::JoinSet;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -15,7 +17,7 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("failed to bind to 127.0.0.1:6379")?;
 
-    tokio::spawn(async {
+    let eviction = tokio::spawn(async {
         loop {
             tokio::time::sleep(Duration::from_secs(1)).await;
             db::with_db(|db| {
@@ -24,6 +26,38 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
+    let mut connections = JoinSet::new();
+
+    let result = tokio::select! {
+        r = accept_loop(&listener, &mut connections) => r,
+        _ = signal::ctrl_c() => {
+            println!("\nCtrl+C received, shutting down...");
+            Ok(())
+        }
+    };
+
+    // ── Graceful shutdown ──
+    println!("Stopping eviction task...");
+    eviction.abort();
+
+    println!(
+        "Waiting for {} active connection(s) to finish...",
+        connections.len()
+    );
+    while let Some(r) = connections.join_next().await {
+        if let Err(e) = r {
+            eprintln!("connection task panicked: {e}");
+        }
+    }
+
+    println!("Server stopped.");
+    result
+}
+
+async fn accept_loop(
+    listener: &TcpListener,
+    connections: &mut JoinSet<()>,
+) -> anyhow::Result<()> {
     loop {
         let (stream, _) = listener
             .accept()
@@ -31,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
             .context("failed to accept connection")?;
         println!("accepted new connection");
 
-        tokio::spawn(async move {
+        connections.spawn(async move {
             if let Err(e) = handle_connection(stream).await {
                 eprintln!("connection error: {:#}", e);
             }

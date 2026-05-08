@@ -1,4 +1,4 @@
-use test_tools::{ALL_TESTS, run_test, RedisClient, TestResult};
+use test_tools::{ALL_TESTS, run_test, RedisClient, TestResult, TestDef};
 
 const GREEN: &str = "\x1b[32m";
 const RED: &str = "\x1b[31m";
@@ -15,11 +15,17 @@ async fn main() {
         .collect();
     let has_filters = !filters.is_empty();
 
-    let is_enabled = |cat: &str| -> bool {
-        !has_filters || filters.iter().any(|f| *f == cat.to_uppercase())
+    let is_enabled = |def: &TestDef| -> bool {
+        if !has_filters { return true; }
+        filters.iter().any(|f| {
+            let f = f.as_str();
+            f == def.category_filter.to_uppercase()
+            || def.subcategory.map_or(false, |s| s.to_uppercase() == f)
+            || def.name.to_uppercase() == f
+        })
     };
 
-    println!("{BOLD}Redis Test Runner v0.1.0{RESET}");
+    println!("{BOLD}Redis Test Runner v0.2.0{RESET}");
     println!("Target: 127.0.0.1:6379");
     if has_filters {
         println!("Filters: {}", filters.join(", "));
@@ -46,20 +52,28 @@ async fn main() {
 
     let mut results: Vec<TestResult> = Vec::new();
     let mut current_category = "";
+    let mut current_subcategory = "";
 
-    for test in ALL_TESTS.iter().filter(|t| is_enabled(t.category_filter)) {
+    for test in ALL_TESTS.iter().filter(|t| is_enabled(t)) {
         if test.category != current_category {
             println!("\n{BOLD}[{}]{RESET}", test.category);
             current_category = test.category;
+            current_subcategory = "";
         }
-        match run_test(test.name, &mut client).await {
+        if test.subcategory.is_some() && test.subcategory != Some(current_subcategory) {
+            let sc = test.subcategory.unwrap_or("");
+            println!("  {BOLD}[{sc}]{RESET}");
+            current_subcategory = sc;
+        }
+        let indent = if test.subcategory.is_some() { "    " } else { "  " };
+        match run_test(test, &mut client).await {
             Ok(()) => {
-                println!("  {GREEN}[PASS]{RESET} {}", test.name);
+                println!("{indent}{GREEN}[PASS]{RESET} {}", test.name);
                 results.push(TestResult::pass(test.name, test.category));
             }
             Err(e) => {
-                println!("  {RED}[FAIL]{RESET} {}", test.name);
-                println!("         {YELLOW}{DIM}{e}{RESET}");
+                println!("{indent}{RED}[FAIL]{RESET} {}", test.name);
+                println!("           {YELLOW}{DIM}{e}{RESET}");
                 results.push(TestResult::fail(test.name, test.category, e));
             }
         }
