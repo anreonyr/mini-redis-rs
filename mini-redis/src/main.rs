@@ -1,4 +1,4 @@
-use codecrafters_redis::{cmd, db, inline, registry, resp};
+use mini_redis::{cmd, db, inline, registry, resp};
 use std::time::Duration;
 use tokio::time::Instant;
 

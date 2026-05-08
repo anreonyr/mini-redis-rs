@@ -1,4 +1,4 @@
-use codecrafters_redis::resp;
+use mini_redis::resp;
 
 #[test]
 fn test_simple_string() {

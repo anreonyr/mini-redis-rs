@@ -33,3 +33,8 @@ where
     let mut db = DB.lock().unwrap();
     f(&mut db)
 }
+
+pub fn flushdb() {
+    let mut db = DB.lock().unwrap();
+    db.clear();
+}

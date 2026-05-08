@@ -45,6 +45,7 @@ pub enum ParsedCmd {
         key: String,
         count: Option<usize>,
     },
+    Flushdb,
     Blpop {
         keys: Vec<String>,
         timeout: u64,
@@ -190,6 +191,7 @@ impl ParsedCmd {
                 let name = iter.next();
                 ParsedCmd::Command { subcommand, name }
             }
+            "FLUSHDB" => ParsedCmd::Flushdb,
             _ => return Err(CmdError::UnknownCommand),
         })
     }
@@ -240,6 +242,7 @@ pub async fn dispatch_command(cmd: Result<ParsedCmd, CmdError>) -> resp::RespTyp
         ParsedCmd::Lpop { key, count } => handle_lpop(&key, count),
         ParsedCmd::Blpop { keys, timeout } => handle_blpop(&keys, timeout).await,
         ParsedCmd::Command { subcommand, name } => handle_command(subcommand, name),
+        ParsedCmd::Flushdb => handle_flushdb(),
     }
 }
 
@@ -544,4 +547,9 @@ fn handle_command(subcommand: Option<String>, name: Option<String>) -> resp::Res
             resp::RespType::Array(Some(names))
         }
     }
+}
+
+fn handle_flushdb() -> resp::RespType {
+    crate::db::flushdb();
+    resp::RespType::SimpleString("OK".to_string())
 }

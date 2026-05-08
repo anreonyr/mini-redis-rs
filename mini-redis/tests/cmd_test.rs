@@ -1,5 +1,5 @@
-use codecrafters_redis::cmd::ParsedCmd;
-use codecrafters_redis::{cmd, resp};
+use mini_redis::cmd::ParsedCmd;
+use mini_redis::{cmd, resp};
 
 #[tokio::test]
 async fn test_dispatch_command_ping() {

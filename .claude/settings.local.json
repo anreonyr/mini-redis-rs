@@ -3,7 +3,7 @@
     "allow": [
       "Bash(cargo test *)",
       "Bash(cargo build *)",
-      "Bash(taskkill /f /im codecrafters-redis.exe)",
+      "Bash(taskkill /f /im mini-redis.exe)",
       "Bash(cargo check *)",
       "Bash(rustc --version)"
     ]

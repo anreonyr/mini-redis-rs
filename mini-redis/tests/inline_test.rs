@@ -1,4 +1,4 @@
-use codecrafters_redis::inline;
+use mini_redis::inline;
 
 // --- strip_iac ---
 

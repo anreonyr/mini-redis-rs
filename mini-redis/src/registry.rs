@@ -122,6 +122,13 @@ pub fn init() {
         since_stage: 0,
         summary: "Returns information about all commands or a specific command",
     });
+    reg.register(CommandInfo {
+        name: "FLUSHDB",
+        arity: 1,
+        category: "Server",
+        since_stage: 0,
+        summary: "Removes all data from the current database",
+    });
 }
 
 pub fn with_registry<F, R>(f: F) -> R
