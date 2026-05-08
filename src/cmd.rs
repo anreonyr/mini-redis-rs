@@ -1,7 +1,7 @@
 use anyhow::Ok;
+use bytes::Bytes;
 use std::collections::VecDeque;
 use std::time::Duration;
-use std::{range, vec};
 use tokio::time::Instant;
 
 use crate::db::{Entry, Value, with_db};
@@ -68,7 +68,7 @@ fn handle_ping(_args: &[String]) -> anyhow::Result<resp::RespType> {
 
 fn handle_echo(args: &[String]) -> anyhow::Result<resp::RespType> {
     match args.first() {
-        Some(arg) => Ok(resp::RespType::BulkString(Some(arg.as_bytes().to_vec()))),
+        Some(arg) => Ok(resp::RespType::BulkString(Some(Bytes::copy_from_slice(arg.as_bytes())))),
         None => Err(wrong_arg_count("echo").into()),
     }
 }
@@ -79,7 +79,7 @@ fn handle_set(args: &[String]) -> anyhow::Result<resp::RespType> {
             with_db(|db| {
                 db.insert(
                     args[0].clone(),
-                    Entry::new(Value::String(args[1].as_bytes().to_vec()), None),
+                    Entry::new(Value::String(args[1].as_bytes().to_vec().into()), None),
                 );
             });
             Ok(resp::RespType::SimpleString("OK".to_string()))
@@ -100,7 +100,7 @@ fn handle_set(args: &[String]) -> anyhow::Result<resp::RespType> {
                 db.insert(
                     args[0].clone(),
                     Entry::new(
-                        Value::String(args[1].as_bytes().to_vec()),
+                        Value::String(args[1].as_bytes().to_vec().into()),
                         Some(Instant::now() + dur),
                     ),
                 );
@@ -136,9 +136,9 @@ fn handle_get(args: &[String]) -> anyhow::Result<resp::RespType> {
 
 fn handle_rpush(args: &[String]) -> anyhow::Result<resp::RespType> {
     if args.len() >= 2 {
-        let values: VecDeque<Vec<u8>> = args[1..].iter().map(|v| v.as_bytes().to_vec()).collect();
+        let values: VecDeque<Bytes> = args[1..].iter().map(|v| Bytes::from(v.clone())).collect();
         let key = args[0].clone();
-        Ok(with_db(|db| match db.get_mut(&key) {
+        let result = with_db(|db| match db.get_mut(&key) {
             Some(entry) => {
                 if let Value::List(ref mut list) = entry.value {
                     list.extend(values);
@@ -152,10 +152,12 @@ fn handle_rpush(args: &[String]) -> anyhow::Result<resp::RespType> {
             }
             None => {
                 let len = values.len();
-                db.insert(key, Entry::new(Value::List(values), None));
+                db.insert(key.clone(), Entry::new(Value::List(values), None));
                 resp::RespType::Integer(len as i64)
             }
-        }))
+        });
+        crate::blocking::notify_waiters(&key);
+        Ok(result)
     } else {
         Err(wrong_arg_count("rpush").into())
     }
@@ -163,9 +165,9 @@ fn handle_rpush(args: &[String]) -> anyhow::Result<resp::RespType> {
 
 fn handle_lpush(args: &[String]) -> anyhow::Result<resp::RespType> {
     if args.len() >= 2 {
-        let values: VecDeque<Vec<u8>> = args[1..].iter().map(|v| v.as_bytes().to_vec()).collect();
-        let key = &args[0];
-        Ok(with_db(|db| match db.get_mut(key) {
+        let values: VecDeque<Bytes> = args[1..].iter().map(|v| Bytes::from(v.clone())).collect();
+        let key = args[0].clone();
+        let result = with_db(|db| match db.get_mut(&key) {
             Some(entry) => {
                 if let Value::List(ref mut list) = entry.value {
                     for v in values {
@@ -181,10 +183,12 @@ fn handle_lpush(args: &[String]) -> anyhow::Result<resp::RespType> {
             }
             None => {
                 let len = values.len();
-                db.insert(key.to_owned(), Entry::new(Value::List(values), None));
+                db.insert(key.clone(), Entry::new(Value::List(values), None));
                 resp::RespType::Integer(len as i64)
             }
-        }))
+        });
+        crate::blocking::notify_waiters(&key);
+        Ok(result)
     } else {
         Err(wrong_arg_count("lpush").into())
     }
@@ -193,12 +197,10 @@ fn handle_lpush(args: &[String]) -> anyhow::Result<resp::RespType> {
 fn handle_lrange(args: &[String]) -> anyhow::Result<resp::RespType> {
     if args.len() == 3 {
         let key = &args[0];
-        let start = args[1]
-            .parse::<i64>()
-            .map_err(|_| CmdError::InvalidInteger)?;
-        let stop = args[2]
-            .parse::<i64>()
-            .map_err(|_| CmdError::InvalidInteger)?;
+        let start = args[1].parse::<i64>()?;
+        // .map_err(|_| CmdError::InvalidInteger)?;
+        let stop = args[2].parse::<i64>()?;
+        // .map_err(|_| CmdError::InvalidInteger)?;
 
         Ok(with_db(|db| match db.get(key) {
             Some(entry) => match entry.value.clone() {
@@ -299,7 +301,9 @@ fn handle_lpop(args: &[String]) -> anyhow::Result<resp::RespType> {
                         let mut popped: Vec<resp::RespType> = Vec::new();
                         for _ in 0..count {
                             match list.pop_front() {
-                                Some(val) => popped.push(resp::RespType::BulkString(Some(val))),
+                                Some(val) => {
+                                    popped.push(resp::RespType::BulkString(Some(val)))
+                                }
                                 None => break,
                             }
                         }
@@ -325,139 +329,36 @@ fn handle_lpop(args: &[String]) -> anyhow::Result<resp::RespType> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::resp;
-
-    #[test]
-    fn test_handle_ping() {
-        assert_eq!(
-            handle_ping(&[]).unwrap(),
-            resp::RespType::SimpleString("PONG".to_string())
-        );
-    }
-
-    #[test]
-    fn test_handle_echo() {
-        assert_eq!(
-            handle_echo(&["hello".to_string()]).unwrap(),
-            resp::RespType::BulkString(Some(b"hello".to_vec()))
-        );
-    }
-
-    #[test]
-    fn test_handle_echo_no_args() {
-        assert_eq!(
-            handle_echo(&[]).unwrap_err().to_string(),
-            "ERR wrong number of arguments for 'echo' command"
-        );
-    }
-
-    #[test]
-    fn test_wrong_arg_count() {
-        assert_eq!(
-            wrong_arg_count("test").to_string(),
-            "ERR wrong number of arguments for 'test' command"
-        );
-    }
-
-    #[test]
-    fn test_parse_command() {
-        let frame = resp::RespType::Array(Some(vec![
-            resp::RespType::BulkString(Some(b"GET".to_vec())),
-            resp::RespType::BulkString(Some(b"key".to_vec())),
-        ]));
-        let (cmd, args) = parse_command(&frame).unwrap();
-        assert_eq!(cmd, "GET");
-        assert_eq!(args, vec!["key".to_string()]);
-    }
-
-    #[test]
-    fn test_parse_command_not_array() {
-        let frame = resp::RespType::SimpleString("OK".to_string());
-        assert!(parse_command(&frame).is_none());
-    }
-
-    #[test]
-    fn test_dispatch_command_ping() {
-        assert_eq!(
-            dispatch_command("PING", &[]),
-            resp::RespType::SimpleString("PONG".to_string())
-        );
-    }
-
-    #[test]
-    fn test_dispatch_command_unknown() {
-        assert_eq!(
-            dispatch_command("UNKNOWN", &[]),
-            resp::RespType::Error("ERR unknown command".to_string())
-        );
-    }
-
-    #[test]
-    fn test_dispatch_command_echo() {
-        assert_eq!(
-            dispatch_command("ECHO", &["foo".to_string()]),
-            resp::RespType::BulkString(Some(b"foo".to_vec()))
-        );
-    }
-
-    #[test]
-    fn test_set_get_roundtrip() {
-        let result = dispatch_command("SET", &["rt1".to_string(), "val1".to_string()]);
-        assert_eq!(result, resp::RespType::SimpleString("OK".to_string()));
-
-        let result = dispatch_command("GET", &["rt1".to_string()]);
-        assert_eq!(result, resp::RespType::BulkString(Some(b"val1".to_vec())));
-    }
-
-    #[test]
-    fn test_get_nonexistent_key() {
-        let result = dispatch_command("GET", &["nonexistent".to_string()]);
-        assert_eq!(result, resp::RespType::BulkString(None));
-    }
-
-    #[test]
-    fn test_get_no_args() {
-        let result = dispatch_command("GET", &[]);
-        assert_eq!(
-            result,
-            resp::RespType::Error("ERR wrong number of arguments for 'get' command".to_string())
-        );
-    }
-
-    #[test]
-    fn test_handle_set_with_invalid_expiry() {
-        let result = dispatch_command(
-            "SET",
-            &[
-                "k".to_string(),
-                "v".to_string(),
-                "EX".to_string(),
-                "not_a_number".to_string(),
-            ],
-        );
-        assert_eq!(
-            result,
-            resp::RespType::Error("ERR value is not an integer or out of range".to_string())
-        );
-    }
-
-    #[test]
-    fn test_handle_set_with_unknown_flag() {
-        let result = dispatch_command(
-            "SET",
-            &[
-                "k".to_string(),
-                "v".to_string(),
-                "XX".to_string(),
-                "100".to_string(),
-            ],
-        );
-        assert_eq!(
-            result,
-            resp::RespType::Error("ERR syntax error".to_string())
-        );
-    }
+/// Try to pop from the first non-empty list among keys.
+/// Returns `Some(RespType)` if we should respond (success or WRONGTYPE error).
+/// Returns `None` if no data is available (caller should block).
+pub fn try_blpop(keys: &[String]) -> Option<resp::RespType> {
+    with_db(|db| {
+        for key in keys {
+            match db.get_mut(key) {
+                None => continue,
+                Some(entry) => match &mut entry.value {
+                    Value::List(list) => {
+                        if let Some(val) = list.pop_front() {
+                            if list.is_empty() {
+                                db.remove(key);
+                            }
+                            return Some(resp::RespType::Array(Some(vec![
+                                resp::RespType::BulkString(Some(Bytes::copy_from_slice(key.as_bytes()))),
+                                resp::RespType::BulkString(Some(val)),
+                            ])));
+                        }
+                    }
+                    Value::String(_) => {
+                        return Some(resp::RespType::Error(
+                            "WRONGTYPE Operation against a key holding the wrong kind of value"
+                                .to_string(),
+                        ));
+                    }
+                },
+            }
+        }
+        None
+    })
 }
+

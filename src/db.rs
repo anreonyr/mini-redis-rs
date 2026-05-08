@@ -1,13 +1,14 @@
+use bytes::Bytes;
 use std::collections::{HashMap, VecDeque};
 use std::sync::{LazyLock, Mutex};
-use tokio::time::Instant;
+use tokio::time::Instant; // Import Bytes from the byts crate
 
 static DB: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
-    String(Vec<u8>),
-    List(VecDeque<Vec<u8>>),
+    String(Bytes),         // Replace Vec<u8> with Bytes
+    List(VecDeque<Bytes>), // Replace Vec<u8> with Bytes in VecDeque
 }
 
 #[derive(Clone, Debug, PartialEq)]

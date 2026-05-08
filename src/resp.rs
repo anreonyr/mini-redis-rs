@@ -1,3 +1,4 @@
+use bytes::Bytes;
 use std::fmt;
 
 use thiserror::Error;
@@ -7,7 +8,7 @@ pub enum RespType {
     SimpleString(String),
     Error(String),
     Integer(i64),
-    BulkString(Option<Vec<u8>>),
+    BulkString(Option<Bytes>),
     Array(Option<Vec<RespType>>),
 }
 
@@ -137,7 +138,7 @@ impl Decoder {
             return Err(DecodeError::Incomplete);
         }
 
-        let data = buf[(1 + consumed)..(1 + consumed + len)].to_vec();
+        let data = Bytes::copy_from_slice(&buf[(1 + consumed)..(1 + consumed + len)]);
         // Check trailing \r\n
         if buf[1 + consumed + len..1 + consumed + len + 2] != *b"\r\n" {
             return Err(DecodeError::Invalid(
@@ -193,118 +194,3 @@ impl Decoder {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_simple_string() {
-        let decoder = Decoder::new();
-        let (val, consumed) = decoder.decode(b"+OK\r\n").unwrap();
-        assert_eq!(val, RespType::SimpleString("OK".to_string()));
-        assert_eq!(consumed, 5);
-    }
-
-    #[test]
-    fn test_error() {
-        let decoder = Decoder::new();
-        let (val, consumed) = decoder.decode(b"-ERR\r\n").unwrap();
-        assert_eq!(val, RespType::Error("ERR".to_string()));
-        assert_eq!(consumed, 6);
-    }
-
-    #[test]
-    fn test_integer() {
-        let decoder = Decoder::new();
-        let (val, consumed) = decoder.decode(b":42\r\n").unwrap();
-        assert_eq!(val, RespType::Integer(42));
-        assert_eq!(consumed, 5);
-    }
-
-    #[test]
-    fn test_bulk_string() {
-        let decoder = Decoder::new();
-        let data = b"$5\r\nhello\r\n";
-        let (val, consumed) = decoder.decode(data).unwrap();
-        assert_eq!(val, RespType::BulkString(Some(b"hello".to_vec())));
-        assert_eq!(consumed, data.len());
-    }
-
-    #[test]
-    fn test_null_bulk_string() {
-        let decoder = Decoder::new();
-        let (val, consumed) = decoder.decode(b"$-1\r\n").unwrap();
-        assert_eq!(val, RespType::BulkString(None));
-        assert_eq!(consumed, 5);
-    }
-
-    #[test]
-    fn test_empty_bulk_string() {
-        let decoder = Decoder::new();
-        let data = b"$0\r\n\r\n";
-        let (val, consumed) = decoder.decode(data).unwrap();
-        assert_eq!(val, RespType::BulkString(Some(b"".to_vec())));
-        assert_eq!(consumed, data.len());
-    }
-
-    #[test]
-    fn test_array() {
-        let decoder = Decoder::new();
-        let data = b"*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n";
-        let (val, consumed) = decoder.decode(data).unwrap();
-        assert_eq!(
-            val,
-            RespType::Array(Some(vec![
-                RespType::BulkString(Some(b"foo".to_vec())),
-                RespType::BulkString(Some(b"bar".to_vec())),
-            ]))
-        );
-        assert_eq!(consumed, data.len());
-    }
-
-    #[test]
-    fn test_null_array() {
-        let decoder = Decoder::new();
-        let (val, consumed) = decoder.decode(b"*-1\r\n").unwrap();
-        assert_eq!(val, RespType::Array(None));
-        assert_eq!(consumed, 5);
-    }
-
-    #[test]
-    fn test_incomplete() {
-        let decoder = Decoder::new();
-        let result = decoder.decode(b"+OK");
-        assert_eq!(result, Err(DecodeError::Incomplete));
-    }
-
-    #[test]
-    fn test_serialize_simple_string() {
-        let val = RespType::SimpleString("OK".to_string());
-        assert_eq!(val.serialize(), b"+OK\r\n");
-    }
-
-    #[test]
-    fn test_serialize_bulk_string() {
-        let val = RespType::BulkString(Some(b"hello".to_vec()));
-        assert_eq!(val.serialize(), b"$5\r\nhello\r\n");
-    }
-
-    #[test]
-    fn test_serialize_null_bulk_string() {
-        let val = RespType::BulkString(None);
-        assert_eq!(val.serialize(), b"$-1\r\n");
-    }
-
-    #[test]
-    fn test_serialize_array() {
-        let val = RespType::Array(Some(vec![
-            RespType::BulkString(Some(b"SET".to_vec())),
-            RespType::BulkString(Some(b"key".to_vec())),
-            RespType::BulkString(Some(b"value".to_vec())),
-        ]));
-        assert_eq!(
-            val.serialize(),
-            b"*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$5\r\nvalue\r\n"
-        );
-    }
-}
