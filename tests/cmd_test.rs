@@ -1,26 +1,26 @@
-use codecrafters_redis::cmd;
-use codecrafters_redis::resp;
+use codecrafters_redis::cmd::ParsedCmd;
+use codecrafters_redis::{cmd, resp};
 
-#[test]
-fn test_dispatch_command_ping() {
+#[tokio::test]
+async fn test_dispatch_command_ping() {
     assert_eq!(
-        cmd::dispatch_command("PING", &[]),
+        cmd::dispatch_command(ParsedCmd::parse("PING", vec![])).await,
         resp::RespType::SimpleString("PONG".to_string())
     );
 }
 
-#[test]
-fn test_dispatch_command_echo() {
+#[tokio::test]
+async fn test_dispatch_command_echo() {
     assert_eq!(
-        cmd::dispatch_command("ECHO", &["foo".to_string()]),
+        cmd::dispatch_command(ParsedCmd::parse("ECHO", vec!["foo".to_string()])).await,
         resp::RespType::BulkString(Some(bytes::Bytes::from_static(b"foo")))
     );
 }
 
-#[test]
-fn test_dispatch_command_unknown() {
+#[tokio::test]
+async fn test_dispatch_command_unknown() {
     assert_eq!(
-        cmd::dispatch_command("UNKNOWN", &[]),
+        cmd::dispatch_command(ParsedCmd::parse("UNKNOWN", vec![])).await,
         resp::RespType::Error("ERR unknown command".to_string())
     );
 }
@@ -31,9 +31,8 @@ fn test_parse_command() {
         resp::RespType::BulkString(Some(bytes::Bytes::from_static(b"GET"))),
         resp::RespType::BulkString(Some(bytes::Bytes::from_static(b"key"))),
     ]));
-    let (parsed_cmd, args) = cmd::parse_command(&frame).unwrap();
-    assert_eq!(parsed_cmd, "GET");
-    assert_eq!(args, vec!["key".to_string()]);
+    let result = cmd::parse_command(&frame).unwrap();
+    assert_eq!(result.unwrap(), ParsedCmd::Get { key: "key".to_string() });
 }
 
 #[test]
@@ -42,67 +41,69 @@ fn test_parse_command_not_array() {
     assert!(cmd::parse_command(&frame).is_none());
 }
 
-#[test]
-fn test_set_get_roundtrip() {
-    let result = cmd::dispatch_command("SET", &["rt1".to_string(), "val1".to_string()]);
+#[tokio::test]
+async fn test_set_get_roundtrip() {
+    let result = cmd::dispatch_command(ParsedCmd::parse("SET", vec!["rt1".to_string(), "val1".to_string()])).await;
     assert_eq!(result, resp::RespType::SimpleString("OK".to_string()));
 
-    let result = cmd::dispatch_command("GET", &["rt1".to_string()]);
+    let result = cmd::dispatch_command(ParsedCmd::parse("GET", vec!["rt1".to_string()])).await;
     assert_eq!(result, resp::RespType::BulkString(Some(bytes::Bytes::from_static(b"val1"))));
 }
 
-#[test]
-fn test_get_nonexistent_key() {
-    let result = cmd::dispatch_command("GET", &["nonexistent".to_string()]);
+#[tokio::test]
+async fn test_get_nonexistent_key() {
+    let result = cmd::dispatch_command(ParsedCmd::parse("GET", vec!["nonexistent".to_string()])).await;
     assert_eq!(result, resp::RespType::BulkString(None));
 }
 
-#[test]
-fn test_get_no_args() {
-    let result = cmd::dispatch_command("GET", &[]);
+#[tokio::test]
+async fn test_get_no_args() {
+    let result = cmd::dispatch_command(ParsedCmd::parse("GET", vec![])).await;
     assert_eq!(
         result,
         resp::RespType::Error("ERR wrong number of arguments for 'get' command".to_string())
     );
 }
 
-#[test]
-fn test_echo_no_args() {
-    let result = cmd::dispatch_command("ECHO", &[]);
+#[tokio::test]
+async fn test_echo_no_args() {
+    let result = cmd::dispatch_command(ParsedCmd::parse("ECHO", vec![])).await;
     assert_eq!(
         result,
         resp::RespType::Error("ERR wrong number of arguments for 'echo' command".to_string())
     );
 }
 
-#[test]
-fn test_set_with_invalid_expiry() {
-    let result = cmd::dispatch_command(
+#[tokio::test]
+async fn test_set_with_invalid_expiry() {
+    let result = cmd::dispatch_command(ParsedCmd::parse(
         "SET",
-        &[
+        vec![
             "k".to_string(),
             "v".to_string(),
             "EX".to_string(),
             "not_a_number".to_string(),
         ],
-    );
+    ))
+    .await;
     assert_eq!(
         result,
         resp::RespType::Error("ERR value is not an integer or out of range".to_string())
     );
 }
 
-#[test]
-fn test_set_with_unknown_flag() {
-    let result = cmd::dispatch_command(
+#[tokio::test]
+async fn test_set_with_unknown_flag() {
+    let result = cmd::dispatch_command(ParsedCmd::parse(
         "SET",
-        &[
+        vec![
             "k".to_string(),
             "v".to_string(),
             "XX".to_string(),
             "100".to_string(),
         ],
-    );
+    ))
+    .await;
     assert_eq!(
         result,
         resp::RespType::Error("ERR syntax error".to_string())

@@ -1,7 +1,5 @@
-use codecrafters_redis::{blocking, cmd, db, inline, resp};
-use std::sync::Arc;
+use codecrafters_redis::{cmd, db, inline, resp};
 use std::time::Duration;
-use tokio::sync::Notify;
 use tokio::time::Instant;
 
 use anyhow::Context;
@@ -102,7 +100,7 @@ async fn process_inline(
             Ok(args) => {
                 let cmd = args[0].to_uppercase();
                 let cmd_args: Vec<String> = args[1..].to_vec();
-                let response = cmd::dispatch_command(&cmd, &cmd_args);
+                let response = cmd::dispatch_command(cmd::ParsedCmd::parse(&cmd, cmd_args)).await;
                 send_response(stream, &response).await?;
             }
             Err(e) => {
@@ -125,13 +123,9 @@ async fn process_resp(
                 pending.drain(..consumed);
                 println!("received: {}", frame);
 
-                if let Some((cmd, args)) = cmd::parse_command(&frame) {
-                    if cmd == "BLPOP" {
-                        handle_blpop(&args, stream).await?;
-                    } else {
-                        let response = cmd::dispatch_command(&cmd, &args);
-                        send_response(stream, &response).await?;
-                    }
+                if let Some(cmd) = cmd::parse_command(&frame) {
+                    let response = cmd::dispatch_command(cmd).await;
+                    send_response(stream, &response).await?;
                 }
             }
             Err(resp::DecodeError::Incomplete) => break,
@@ -144,55 +138,6 @@ async fn process_resp(
         }
     }
     Ok(())
-}
-
-async fn handle_blpop(args: &[String], stream: &mut tokio::net::TcpStream) -> anyhow::Result<()> {
-    if args.len() < 2 {
-        let err =
-            resp::RespType::Error(format!("ERR wrong number of arguments for 'blpop' command"));
-        return send_response(stream, &err).await;
-    }
-
-    let timeout_secs: u64 = match args.last().unwrap().parse() {
-        Ok(n) => n,
-        Err(_) => {
-            let err =
-                resp::RespType::Error("ERR value is not an integer or out of range".to_string());
-            return send_response(stream, &err).await;
-        }
-    };
-
-    let keys: Vec<String> = args[..args.len() - 1].to_vec();
-
-    // First try — non-blocking
-    if let Some(response) = cmd::try_blpop(&keys) {
-        return send_response(stream, &response).await;
-    }
-
-    // Blocking loop
-    let notify = Arc::new(Notify::new());
-
-    loop {
-        // Register waiter under DB lock (prevents races with concurrent pushes)
-        let guard = db::with_db(|_| blocking::register(&keys, &notify));
-
-        if timeout_secs == 0 {
-            notify.notified().await;
-        } else {
-            let notified = notify.notified();
-            tokio::pin!(notified);
-            let _ = tokio::time::timeout(Duration::from_secs(timeout_secs), notified).await;
-        }
-
-        // Guard drops here → unregisters from all keys
-        drop(guard);
-
-        // Re-check all keys
-        match cmd::try_blpop(&keys) {
-            Some(response) => return send_response(stream, &response).await,
-            None => continue, // false wakeup — loop back and re-register
-        }
-    }
 }
 
 async fn send_response(

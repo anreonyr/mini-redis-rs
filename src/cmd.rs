@@ -1,11 +1,28 @@
-use anyhow::Ok;
 use bytes::Bytes;
 use std::collections::VecDeque;
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::Notify;
 use tokio::time::Instant;
 
+use crate::blocking;
 use crate::db::{Entry, Value, with_db};
 use crate::resp;
+
+/// All arguments have been parsed and validated at this point.
+#[derive(Debug, PartialEq)]
+pub enum ParsedCmd {
+    Ping,
+    Echo { message: String },
+    Set { key: String, value: String, expiry: Option<Duration> },
+    Get { key: String },
+    Rpush { key: String, values: Vec<String> },
+    Lpush { key: String, values: Vec<String> },
+    Lrange { key: String, start: i64, stop: i64 },
+    Llen { key: String },
+    Lpop { key: String, count: Option<usize> },
+    Blpop { keys: Vec<String>, timeout: u64 },
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum CmdError {
@@ -15,13 +32,116 @@ pub enum CmdError {
     InvalidInteger,
     #[error("ERR syntax error")]
     SyntaxError,
+    #[error("ERR unknown command")]
+    UnknownCommand,
 }
 
 fn wrong_arg_count(cmd: &str) -> CmdError {
     CmdError::WrongArgCount(cmd.to_string())
 }
 
-pub fn parse_command(frame: &resp::RespType) -> Option<(String, Vec<String>)> {
+fn wrong_type() -> resp::RespType {
+    resp::RespType::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string())
+}
+
+impl ParsedCmd {
+    pub fn parse(cmd: &str, args: Vec<String>) -> Result<Self, CmdError> {
+        Ok(match cmd {
+            "PING" => ParsedCmd::Ping,
+            "ECHO" => {
+                let message = args.into_iter().next().ok_or_else(|| wrong_arg_count("echo"))?;
+                ParsedCmd::Echo { message }
+            }
+            "SET" => {
+                if args.len() != 2 && args.len() != 4 {
+                    return Err(wrong_arg_count("set"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let value = iter.next().unwrap();
+                let expiry = match (iter.next(), iter.next()) {
+                    (Some(flag), Some(val)) => Some(match flag.as_str() {
+                        "PX" => Duration::from_millis(
+                            val.parse().map_err(|_| CmdError::InvalidInteger)?,
+                        ),
+                        "EX" => Duration::from_secs(
+                            val.parse().map_err(|_| CmdError::InvalidInteger)?,
+                        ),
+                        _ => return Err(CmdError::SyntaxError),
+                    }),
+                    (None, None) => None,
+                    _ => return Err(wrong_arg_count("set")),
+                };
+                ParsedCmd::Set { key, value, expiry }
+            }
+            "GET" => {
+                let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("get"))?;
+                ParsedCmd::Get { key }
+            }
+            "RPUSH" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count("rpush"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let values: Vec<String> = iter.collect();
+                ParsedCmd::Rpush { key, values }
+            }
+            "LPUSH" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count("lpush"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let values: Vec<String> = iter.collect();
+                ParsedCmd::Lpush { key, values }
+            }
+            "LRANGE" => {
+                if args.len() != 3 {
+                    return Err(wrong_arg_count("lrange"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let start: i64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                let stop: i64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                ParsedCmd::Lrange { key, start, stop }
+            }
+            "LLEN" => {
+                let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("llen"))?;
+                ParsedCmd::Llen { key }
+            }
+            "LPOP" => {
+                if args.is_empty() || args.len() > 2 {
+                    return Err(wrong_arg_count("lpop"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let count = iter
+                    .next()
+                    .map(|s| s.parse::<usize>().map_err(|_| CmdError::InvalidInteger))
+                    .transpose()?;
+                ParsedCmd::Lpop { key, count }
+            }
+            "BLPOP" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count("blpop"));
+                }
+                let timeout = args[args.len() - 1]
+                    .parse()
+                    .map_err(|_| CmdError::InvalidInteger)?;
+                let mut a = args;
+                a.pop();
+                ParsedCmd::Blpop { keys: a, timeout }
+            }
+            _ => return Err(CmdError::UnknownCommand),
+        })
+    }
+}
+
+/// Parse a RESP frame into a parsed command.
+/// Returns `None` if the frame is not a command array; `Some(Err(..))` for unknown commands
+/// or invalid arguments.
+pub fn parse_command(frame: &resp::RespType) -> Option<Result<ParsedCmd, CmdError>> {
     if let resp::RespType::Array(Some(items)) = frame {
         let cmd = items.first().and_then(|v| {
             if let resp::RespType::BulkString(Some(bytes)) = v {
@@ -29,7 +149,7 @@ pub fn parse_command(frame: &resp::RespType) -> Option<(String, Vec<String>)> {
             } else {
                 None
             }
-        });
+        })?;
         let args: Vec<String> = items[1..]
             .iter()
             .filter_map(|v| {
@@ -40,293 +160,192 @@ pub fn parse_command(frame: &resp::RespType) -> Option<(String, Vec<String>)> {
                 }
             })
             .collect();
-        cmd.map(|c| (c, args))
+        Some(ParsedCmd::parse(&cmd, args))
     } else {
         None
     }
 }
 
-pub fn dispatch_command(cmd: &str, args: &[String]) -> resp::RespType {
-    (match cmd {
-        "PING" => handle_ping(args),
-        "ECHO" => handle_echo(args),
-        "SET" => handle_set(args),
-        "GET" => handle_get(args),
-        "RPUSH" => handle_rpush(args),
-        "LPUSH" => handle_lpush(args),
-        "LRANGE" => handle_lrange(args),
-        "LLEN" => handle_llen(args),
-        "LPOP" => handle_lpop(args),
-        _ => return resp::RespType::Error("ERR unknown command".to_string()),
+pub async fn dispatch_command(cmd: Result<ParsedCmd, CmdError>) -> resp::RespType {
+    let parsed = match cmd {
+        Ok(c) => c,
+        Err(e) => return resp::RespType::Error(e.to_string()),
+    };
+    match parsed {
+        ParsedCmd::Ping => handle_ping(),
+        ParsedCmd::Echo { message } => handle_echo(&message),
+        ParsedCmd::Set { key, value, expiry } => handle_set(&key, &value, expiry),
+        ParsedCmd::Get { key } => handle_get(&key),
+        ParsedCmd::Rpush { key, values } => handle_rpush(&key, &values),
+        ParsedCmd::Lpush { key, values } => handle_lpush(&key, &values),
+        ParsedCmd::Lrange { key, start, stop } => handle_lrange(&key, start, stop),
+        ParsedCmd::Llen { key } => handle_llen(&key),
+        ParsedCmd::Lpop { key, count } => handle_lpop(&key, count),
+        ParsedCmd::Blpop { keys, timeout } => handle_blpop(&keys, timeout).await,
+    }
+}
+
+fn handle_ping() -> resp::RespType {
+    resp::RespType::SimpleString("PONG".to_string())
+}
+
+fn handle_echo(message: &str) -> resp::RespType {
+    resp::RespType::BulkString(Some(Bytes::copy_from_slice(message.as_bytes())))
+}
+
+fn handle_set(key: &str, value: &str, expiry: Option<Duration>) -> resp::RespType {
+    with_db(|db| {
+        db.insert(
+            key.to_string(),
+            Entry::new(
+                Value::String(Bytes::from(value.to_string())),
+                expiry.map(|d| Instant::now() + d),
+            ),
+        );
+    });
+    resp::RespType::SimpleString("OK".to_string())
+}
+
+fn handle_get(key: &str) -> resp::RespType {
+    with_db(|db| match db.get(key) {
+        Some(entry) => {
+            if entry.expiry.is_some_and(|exp| Instant::now() >= exp) {
+                db.remove(key);
+                resp::RespType::BulkString(None)
+            } else {
+                match entry.value.clone() {
+                    Value::String(v) => resp::RespType::BulkString(Some(v)),
+                    Value::List(_) => wrong_type(),
+                }
+            }
+        }
+        None => resp::RespType::BulkString(None),
     })
-    .unwrap_or_else(|e| resp::RespType::Error(e.to_string()))
 }
 
-fn handle_ping(_args: &[String]) -> anyhow::Result<resp::RespType> {
-    Ok(resp::RespType::SimpleString("PONG".to_string()))
-}
-
-fn handle_echo(args: &[String]) -> anyhow::Result<resp::RespType> {
-    match args.first() {
-        Some(arg) => Ok(resp::RespType::BulkString(Some(Bytes::copy_from_slice(arg.as_bytes())))),
-        None => Err(wrong_arg_count("echo").into()),
-    }
-}
-
-fn handle_set(args: &[String]) -> anyhow::Result<resp::RespType> {
-    match args.len() {
-        2 => {
-            with_db(|db| {
-                db.insert(
-                    args[0].clone(),
-                    Entry::new(Value::String(args[1].as_bytes().to_vec().into()), None),
-                );
-            });
-            Ok(resp::RespType::SimpleString("OK".to_string()))
+fn handle_rpush(key: &str, values: &[String]) -> resp::RespType {
+    let values: VecDeque<Bytes> = values.iter().map(|v| Bytes::from(v.clone())).collect();
+    let result = with_db(|db| match db.get_mut(key) {
+        Some(entry) => {
+            if let Value::List(ref mut list) = entry.value {
+                list.extend(values);
+                resp::RespType::Integer(list.len() as i64)
+            } else {
+                wrong_type()
+            }
         }
-        4 => {
-            let dur = match args[2].as_str() {
-                "PX" => args[3]
-                    .parse::<u64>()
-                    .map(Duration::from_millis)
-                    .map_err(|_| CmdError::InvalidInteger)?,
-                "EX" => args[3]
-                    .parse::<u64>()
-                    .map(Duration::from_secs)
-                    .map_err(|_| CmdError::InvalidInteger)?,
-                _ => anyhow::bail!(CmdError::SyntaxError),
-            };
-            with_db(|db| {
-                db.insert(
-                    args[0].clone(),
-                    Entry::new(
-                        Value::String(args[1].as_bytes().to_vec().into()),
-                        Some(Instant::now() + dur),
-                    ),
-                );
-            });
-            Ok(resp::RespType::SimpleString("OK".to_string()))
+        None => {
+            let len = values.len();
+            db.insert(key.to_string(), Entry::new(Value::List(values), None));
+            resp::RespType::Integer(len as i64)
         }
-        _ => Err(wrong_arg_count("set").into()),
-    }
+    });
+    blocking::notify_waiters(key);
+    result
 }
 
-fn handle_get(args: &[String]) -> anyhow::Result<resp::RespType> {
-    match args.first() {
-        Some(key) => Ok(with_db(|db| match db.get(key) {
-            Some(entry) => {
-                if entry.expiry.is_some_and(|exp| Instant::now() >= exp) {
+fn handle_lpush(key: &str, values: &[String]) -> resp::RespType {
+    let values: VecDeque<Bytes> = values.iter().map(|v| Bytes::from(v.clone())).collect();
+    let result = with_db(|db| match db.get_mut(key) {
+        Some(entry) => {
+            if let Value::List(ref mut list) = entry.value {
+                for v in values {
+                    list.push_front(v);
+                }
+                resp::RespType::Integer(list.len() as i64)
+            } else {
+                wrong_type()
+            }
+        }
+        None => {
+            let len = values.len();
+            db.insert(key.to_string(), Entry::new(Value::List(values), None));
+            resp::RespType::Integer(len as i64)
+        }
+    });
+    blocking::notify_waiters(key);
+    result
+}
+
+fn handle_lrange(key: &str, start: i64, stop: i64) -> resp::RespType {
+    with_db(|db| match db.get(key) {
+        Some(entry) => match entry.value.clone() {
+            Value::List(list) => {
+                let len = list.len() as i64;
+                if len == 0 {
+                    return resp::RespType::Array(Some(vec![]));
+                }
+
+                let mut l = if start < 0 { len + start } else { start };
+                let mut r = if stop < 0 { len + stop } else { stop };
+
+                if l < 0 {
+                    l = 0;
+                }
+                if r >= len {
+                    r = len - 1;
+                }
+
+                if l > r {
+                    resp::RespType::Array(Some(vec![]))
+                } else {
+                    let items: Vec<resp::RespType> = list
+                        .range(l as usize..=r as usize)
+                        .map(|v| resp::RespType::BulkString(Some(v.clone())))
+                        .collect();
+                    resp::RespType::Array(Some(items))
+                }
+            }
+            _ => wrong_type(),
+        },
+        None => resp::RespType::Array(Some(vec![])),
+    })
+}
+
+fn handle_llen(key: &str) -> resp::RespType {
+    with_db(|db| match db.get(key) {
+        Some(v) => match &v.value {
+            Value::List(u) => resp::RespType::Integer(u.len() as i64),
+            _ => wrong_type(),
+        },
+        None => resp::RespType::Integer(0),
+    })
+}
+
+fn handle_lpop(key: &str, count: Option<usize>) -> resp::RespType {
+    if count == Some(0) {
+        return resp::RespType::Array(Some(vec![]));
+    }
+    let n = count.unwrap_or(1);
+    with_db(|db| match db.get_mut(key) {
+        Some(entry) => {
+            if let Value::List(ref mut list) = entry.value {
+                let mut popped: Vec<resp::RespType> = Vec::new();
+                for _ in 0..n {
+                    match list.pop_front() {
+                        Some(val) => popped.push(resp::RespType::BulkString(Some(val))),
+                        None => break,
+                    }
+                }
+                if list.is_empty() {
                     db.remove(key);
-                    resp::RespType::BulkString(None)
-                } else {
-                    match entry.value.clone() {
-                        Value::String(v) => resp::RespType::BulkString(Some(v)),
-                        Value::List(_) => resp::RespType::Error(
-                            "WRONGTYPE Operation against a key holding the wrong kind of value"
-                                .to_string(),
-                        ),
-                    }
                 }
+                match count {
+                    // No count arg -> single BulkString (like Redis LPOP)
+                    None => popped.into_iter().next().unwrap_or(resp::RespType::BulkString(None)),
+                    // Count specified -> always Array
+                    Some(_) if popped.is_empty() => resp::RespType::Array(None),
+                    Some(_) => resp::RespType::Array(Some(popped)),
+                }
+            } else {
+                wrong_type()
             }
+        }
+        None => match count {
             None => resp::RespType::BulkString(None),
-        })),
-        None => Err(wrong_arg_count("get").into()),
-    }
-}
-
-fn handle_rpush(args: &[String]) -> anyhow::Result<resp::RespType> {
-    if args.len() >= 2 {
-        let values: VecDeque<Bytes> = args[1..].iter().map(|v| Bytes::from(v.clone())).collect();
-        let key = args[0].clone();
-        let result = with_db(|db| match db.get_mut(&key) {
-            Some(entry) => {
-                if let Value::List(ref mut list) = entry.value {
-                    list.extend(values);
-                    resp::RespType::Integer(list.len() as i64)
-                } else {
-                    resp::RespType::Error(
-                        "WRONGTYPE Operation against a key holding the wrong kind of value"
-                            .to_string(),
-                    )
-                }
-            }
-            None => {
-                let len = values.len();
-                db.insert(key.clone(), Entry::new(Value::List(values), None));
-                resp::RespType::Integer(len as i64)
-            }
-        });
-        crate::blocking::notify_waiters(&key);
-        Ok(result)
-    } else {
-        Err(wrong_arg_count("rpush").into())
-    }
-}
-
-fn handle_lpush(args: &[String]) -> anyhow::Result<resp::RespType> {
-    if args.len() >= 2 {
-        let values: VecDeque<Bytes> = args[1..].iter().map(|v| Bytes::from(v.clone())).collect();
-        let key = args[0].clone();
-        let result = with_db(|db| match db.get_mut(&key) {
-            Some(entry) => {
-                if let Value::List(ref mut list) = entry.value {
-                    for v in values {
-                        list.push_front(v);
-                    }
-                    resp::RespType::Integer(list.len() as i64)
-                } else {
-                    resp::RespType::Error(
-                        "WRONGTYPE Operation against a key holding the wrong kind of value"
-                            .to_string(),
-                    )
-                }
-            }
-            None => {
-                let len = values.len();
-                db.insert(key.clone(), Entry::new(Value::List(values), None));
-                resp::RespType::Integer(len as i64)
-            }
-        });
-        crate::blocking::notify_waiters(&key);
-        Ok(result)
-    } else {
-        Err(wrong_arg_count("lpush").into())
-    }
-}
-
-fn handle_lrange(args: &[String]) -> anyhow::Result<resp::RespType> {
-    if args.len() == 3 {
-        let key = &args[0];
-        let start = args[1].parse::<i64>()?;
-        // .map_err(|_| CmdError::InvalidInteger)?;
-        let stop = args[2].parse::<i64>()?;
-        // .map_err(|_| CmdError::InvalidInteger)?;
-
-        Ok(with_db(|db| match db.get(key) {
-            Some(entry) => match entry.value.clone() {
-                Value::List(list) => {
-                    let len = list.len() as i64;
-                    if len == 0 {
-                        return resp::RespType::Array(Some(vec![]));
-                    }
-
-                    // Convert negative indices to positive
-                    let mut l = if start < 0 { len + start } else { start };
-                    let mut r = if stop < 0 { len + stop } else { stop };
-
-                    // Clamp to valid range
-                    if l < 0 {
-                        l = 0;
-                    }
-                    if r >= len {
-                        r = len - 1;
-                    }
-
-                    if l > r {
-                        resp::RespType::Array(Some(vec![]))
-                    } else {
-                        let items: Vec<resp::RespType> = list
-                            .range(l as usize..=r as usize)
-                            .map(|v| resp::RespType::BulkString(Some(v.clone())))
-                            .collect();
-                        resp::RespType::Array(Some(items))
-                    }
-                }
-                _ => resp::RespType::Error(
-                    "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
-                ),
-            },
-            None => resp::RespType::Array(Some(vec![])),
-        }))
-    } else {
-        Err(wrong_arg_count("lrange").into())
-    }
-}
-
-fn handle_llen(args: &[String]) -> anyhow::Result<resp::RespType> {
-    match args.first() {
-        Some(key) => Ok(with_db(|db| match db.get(key) {
-            Some(v) => {
-                if let Value::List(u) = &v.value {
-                    resp::RespType::Integer(u.len() as i64)
-                } else {
-                    resp::RespType::Error(
-                        "WRONGTYPE Operation against a key holding the wrong kind of value"
-                            .to_string(),
-                    )
-                }
-            }
-            None => resp::RespType::Integer(0),
-        })),
-        None => Err(wrong_arg_count("llen").into()),
-    }
-}
-
-fn handle_lpop(args: &[String]) -> anyhow::Result<resp::RespType> {
-    match args.len() {
-        1 => {
-            let key = &args[0];
-            Ok(with_db(|db| match db.get_mut(key) {
-                Some(entry) => {
-                    if let Value::List(ref mut list) = entry.value {
-                        let val = list.pop_front();
-                        if list.is_empty() {
-                            db.remove(key);
-                        }
-                        match val {
-                            Some(v) => resp::RespType::BulkString(Some(v)),
-                            None => resp::RespType::BulkString(None),
-                        }
-                    } else {
-                        resp::RespType::Error(
-                            "WRONGTYPE Operation against a key holding the wrong kind of value"
-                                .to_string(),
-                        )
-                    }
-                }
-                None => resp::RespType::BulkString(None),
-            }))
-        }
-        2 => {
-            let key = &args[0];
-            let count = args[1]
-                .parse::<usize>()
-                .map_err(|_| CmdError::InvalidInteger)?;
-            if count == 0 {
-                return Ok(resp::RespType::Array(Some(vec![])));
-            }
-            Ok(with_db(|db| match db.get_mut(key) {
-                Some(entry) => {
-                    if let Value::List(ref mut list) = entry.value {
-                        let mut popped: Vec<resp::RespType> = Vec::new();
-                        for _ in 0..count {
-                            match list.pop_front() {
-                                Some(val) => {
-                                    popped.push(resp::RespType::BulkString(Some(val)))
-                                }
-                                None => break,
-                            }
-                        }
-                        if list.is_empty() {
-                            db.remove(key);
-                        }
-                        if popped.is_empty() {
-                            resp::RespType::Array(None)
-                        } else {
-                            resp::RespType::Array(Some(popped))
-                        }
-                    } else {
-                        resp::RespType::Error(
-                            "WRONGTYPE Operation against a key holding the wrong kind of value"
-                                .to_string(),
-                        )
-                    }
-                }
-                None => resp::RespType::Array(None),
-            }))
-        }
-        _ => Err(wrong_arg_count("lpop").into()),
-    }
+            Some(_) => resp::RespType::Array(None),
+        },
+    })
 }
 
 /// Try to pop from the first non-empty list among keys.
@@ -349,12 +368,7 @@ pub fn try_blpop(keys: &[String]) -> Option<resp::RespType> {
                             ])));
                         }
                     }
-                    Value::String(_) => {
-                        return Some(resp::RespType::Error(
-                            "WRONGTYPE Operation against a key holding the wrong kind of value"
-                                .to_string(),
-                        ));
-                    }
+                    Value::String(_) => return Some(wrong_type()),
                 },
             }
         }
@@ -362,3 +376,38 @@ pub fn try_blpop(keys: &[String]) -> Option<resp::RespType> {
     })
 }
 
+async fn handle_blpop(keys: &[String], timeout: u64) -> resp::RespType {
+    // First try — non-blocking
+    if let Some(response) = try_blpop(keys) {
+        return response;
+    }
+
+    // Blocking loop
+    let notify = Arc::new(Notify::new());
+
+    loop {
+        let guard = with_db(|_| blocking::register(keys, &notify));
+
+        if timeout == 0 {
+            notify.notified().await;
+        } else {
+            let notified = notify.notified();
+            tokio::pin!(notified);
+            let timed_out =
+                tokio::time::timeout(Duration::from_secs(timeout), notified)
+                    .await
+                    .is_err();
+            if timed_out {
+                drop(guard);
+                return resp::RespType::Array(None);
+            }
+        }
+
+        drop(guard);
+
+        match try_blpop(keys) {
+            Some(response) => return response,
+            None => continue,
+        }
+    }
+}
