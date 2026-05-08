@@ -1,4 +1,4 @@
-use codecrafters_redis::{cmd, db, inline, resp};
+use codecrafters_redis::{cmd, db, inline, registry, resp};
 use std::time::Duration;
 use tokio::time::Instant;
 
@@ -9,6 +9,8 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    registry::init();
+
     let listener = TcpListener::bind("127.0.0.1:6379")
         .await
         .context("failed to bind to 127.0.0.1:6379")?;

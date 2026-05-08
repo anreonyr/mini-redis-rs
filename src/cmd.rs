@@ -7,6 +7,7 @@ use tokio::time::Instant;
 
 use crate::blocking;
 use crate::db::{Entry, Value, with_db};
+use crate::registry;
 use crate::resp;
 
 /// All arguments have been parsed and validated at this point.
@@ -47,6 +48,10 @@ pub enum ParsedCmd {
     Blpop {
         keys: Vec<String>,
         timeout: u64,
+    },
+    Command {
+        subcommand: Option<String>,
+        name: Option<String>,
     },
 }
 
@@ -178,6 +183,13 @@ impl ParsedCmd {
                 a.pop();
                 ParsedCmd::Blpop { keys: a, timeout }
             }
+            "COMMAND" => {
+                // COMMAND [INFO [name]] or just COMMAND
+                let mut iter = args.into_iter();
+                let subcommand = iter.next().map(|s| s.to_uppercase());
+                let name = iter.next();
+                ParsedCmd::Command { subcommand, name }
+            }
             _ => return Err(CmdError::UnknownCommand),
         })
     }
@@ -227,6 +239,7 @@ pub async fn dispatch_command(cmd: Result<ParsedCmd, CmdError>) -> resp::RespTyp
         ParsedCmd::Llen { key } => handle_llen(&key),
         ParsedCmd::Lpop { key, count } => handle_lpop(&key, count),
         ParsedCmd::Blpop { keys, timeout } => handle_blpop(&keys, timeout).await,
+        ParsedCmd::Command { subcommand, name } => handle_command(subcommand, name),
     }
 }
 
@@ -304,7 +317,11 @@ fn handle_lpush(key: &str, values: &[String]) -> resp::RespType {
         }
         None => {
             let len = values.len();
-            db.insert(key.to_string(), Entry::new(Value::List(values), None));
+            let mut list = VecDeque::new();
+            for v in values {
+                list.push_front(v);
+            }
+            db.insert(key.to_string(), Entry::new(Value::List(list), None));
             resp::RespType::Integer(len as i64)
         }
     });
@@ -457,6 +474,74 @@ async fn handle_blpop(keys: &[String], timeout: u64) -> resp::RespType {
         match try_blpop(keys) {
             Some(response) => return response,
             None => continue,
+        }
+    }
+}
+
+fn handle_command(subcommand: Option<String>, name: Option<String>) -> resp::RespType {
+    match subcommand.as_deref() {
+        Some("INFO") => {
+            if let Some(n) = name {
+                // COMMAND INFO <name>
+                let info = registry::with_registry(|reg| {
+                    reg.get(&n).map(|ci| {
+                        let mut arr = Vec::new();
+                        arr.push(resp::RespType::BulkString(Some(Bytes::copy_from_slice(
+                            ci.name.as_bytes(),
+                        ))));
+                        arr.push(resp::RespType::Integer(ci.arity as i64));
+                        arr.push(resp::RespType::Array(Some(vec![]))); // flags
+                        arr.push(resp::RespType::Integer(0)); // first key
+                        arr.push(resp::RespType::Integer(if ci.arity.abs() > 1 {
+                            ci.arity.unsigned_abs() as i64 - 1
+                        } else {
+                            0
+                        })); // last key
+                        arr.push(resp::RespType::Integer(1)); // step
+                        resp::RespType::Array(Some(arr))
+                    })
+                });
+                match info {
+                    Some(item) => resp::RespType::Array(Some(vec![item])),
+                    None => resp::RespType::Array(None),
+                }
+            } else {
+                // COMMAND INFO (without name) — return all
+                let infos = registry::with_registry(|reg| {
+                    reg.list_all()
+                        .iter()
+                        .map(|ci| {
+                            let mut arr = Vec::new();
+                            arr.push(resp::RespType::BulkString(Some(Bytes::copy_from_slice(
+                                ci.name.as_bytes(),
+                            ))));
+                            arr.push(resp::RespType::Integer(ci.arity as i64));
+                            arr.push(resp::RespType::Array(Some(vec![])));
+                            arr.push(resp::RespType::Integer(0));
+                            arr.push(resp::RespType::Integer(if ci.arity.abs() > 1 {
+                                ci.arity.unsigned_abs() as i64 - 1
+                            } else {
+                                0
+                            }));
+                            arr.push(resp::RespType::Integer(1));
+                            resp::RespType::Array(Some(arr))
+                        })
+                        .collect::<Vec<_>>()
+                });
+                resp::RespType::Array(Some(infos))
+            }
+        }
+        _ => {
+            // COMMAND (plain) — return list of command names only
+            let names = registry::with_registry(|reg| {
+                reg.list_all()
+                    .iter()
+                    .map(|ci| {
+                        resp::RespType::BulkString(Some(Bytes::copy_from_slice(ci.name.as_bytes())))
+                    })
+                    .collect::<Vec<_>>()
+            });
+            resp::RespType::Array(Some(names))
         }
     }
 }
