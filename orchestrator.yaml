@@ -1,0 +1,35 @@
+# orchestrator.yaml — 项目级编排配置
+# 安装指引：将 skills/orchestrator/ 复制到 ~/.claude/skills/orchestrator/
+version: "1.0"
+
+defaults:
+  plan_agent_count: 2
+  code_agent_count: 2
+  review_agent_count: 1
+  max_retries: 3
+  # 模型映射：plan=深度推理, code=快速实现, review=轻量审查
+  # 实际使用的具体模型由 Claude Code 设置决定
+  models:
+    plan: opus
+    code: sonnet
+    review: haiku
+
+phases:
+  - name: "01-scaffold"
+    description: "骨架搭建"
+
+  - name: "02-core"
+    description: "核心实现"
+
+  - name: "03-polish"
+    description: "打磨优化"
+
+parallelism:
+  max_concurrent_phases: 2
+  auto_detect: true
+
+archive:
+  enabled: true
+  dir: "docs/bugs"
+  auto_archive: true
+  inject_for_code: true
