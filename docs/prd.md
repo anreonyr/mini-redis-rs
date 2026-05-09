@@ -10,6 +10,7 @@
 1. HSET — 设置 hash 字段值，返回 1（新建）或 0（覆盖）
 2. HGET — 获取 hash 字段值，字段不存在返回 nil
 3. HGETALL — 获取所有 field-value 对
+4. HDEL — 删除 hash 中一个或多个字段，返回实际删除数量
 
 ## 非功能需求
 - 与 Redis 官方协议兼容
