@@ -179,6 +179,128 @@ pub fn init() {
         since_stage: 0,
         summary: "Reads data from one or more streams",
     });
+    // Hash
+    reg.register(CommandInfo {
+        name: "HSET",
+        arity: -4,
+        category: "Hash",
+        since_stage: 0,
+        summary: "Sets field(s) in a hash",
+    });
+    reg.register(CommandInfo {
+        name: "HGET",
+        arity: 3,
+        category: "Hash",
+        since_stage: 0,
+        summary: "Returns the value of a hash field",
+    });
+    reg.register(CommandInfo {
+        name: "HDEL",
+        arity: -3,
+        category: "Hash",
+        since_stage: 0,
+        summary: "Deletes one or more hash fields",
+    });
+    reg.register(CommandInfo {
+        name: "HGETALL",
+        arity: 2,
+        category: "Hash",
+        since_stage: 0,
+        summary: "Returns all fields and values of a hash",
+    });
+    reg.register(CommandInfo {
+        name: "HEXISTS",
+        arity: 3,
+        category: "Hash",
+        since_stage: 0,
+        summary: "Determines whether a hash field exists",
+    });
+    reg.register(CommandInfo {
+        name: "HLEN",
+        arity: 2,
+        category: "Hash",
+        since_stage: 0,
+        summary: "Returns the number of fields in a hash",
+    });
+    reg.register(CommandInfo {
+        name: "HKEYS",
+        arity: 2,
+        category: "Hash",
+        since_stage: 0,
+        summary: "Returns all field names in a hash",
+    });
+    reg.register(CommandInfo {
+        name: "HVALS",
+        arity: 2,
+        category: "Hash",
+        since_stage: 0,
+        summary: "Returns all values in a hash",
+    });
+    // Set
+    reg.register(CommandInfo {
+        name: "SADD",
+        arity: -3,
+        category: "Set",
+        since_stage: 0,
+        summary: "Adds one or more members to a set",
+    });
+    reg.register(CommandInfo {
+        name: "SMEMBERS",
+        arity: 2,
+        category: "Set",
+        since_stage: 0,
+        summary: "Returns all members of a set",
+    });
+    reg.register(CommandInfo {
+        name: "SISMEMBER",
+        arity: 3,
+        category: "Set",
+        since_stage: 0,
+        summary: "Determines whether a value is a member of a set",
+    });
+    reg.register(CommandInfo {
+        name: "SREM",
+        arity: -3,
+        category: "Set",
+        since_stage: 0,
+        summary: "Removes one or more members from a set",
+    });
+    reg.register(CommandInfo {
+        name: "SCARD",
+        arity: 2,
+        category: "Set",
+        since_stage: 0,
+        summary: "Returns the cardinality of a set",
+    });
+    // Sorted Set
+    reg.register(CommandInfo {
+        name: "ZADD",
+        arity: -4,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Adds one or more members to a sorted set",
+    });
+    reg.register(CommandInfo {
+        name: "ZRANGE",
+        arity: -4,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Returns a range of members in a sorted set",
+    });
+    reg.register(CommandInfo {
+        name: "ZRANK",
+        arity: 3,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Returns the rank of a member in a sorted set",
+    });
+    reg.register(CommandInfo {
+        name: "ZSCORE",
+        arity: 3,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Returns the score of a member in a sorted set",
+    });
 }
 
 pub fn with_registry<F, R>(f: F) -> R

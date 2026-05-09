@@ -444,6 +444,97 @@ tree_tests! {
             "WRONGTYPE XADD on string" => tests::stream::test_wrongtype_xadd_on_string,
         ],
     ],
+    ("Hash", "Hash") [
+        ("HSET", "New") [
+            "HSET new key"          => tests::hash::test_hset_new_key,
+            "HSET multiple fields"  => tests::hash::test_hset_multiple_fields,
+            "HSET overwrite"        => tests::hash::test_hset_overwrite,
+        ],
+        ("HGET", "New") [
+            "HGET existing"         => tests::hash::test_hget_existing,
+            "HGET nonexistent"      => tests::hash::test_hget_nonexistent,
+            "HGET nonexistent key"  => tests::hash::test_hget_nonexistent_key,
+        ],
+        ("HDEL", "New") [
+            "HDEL single"           => tests::hash::test_hdel_single,
+            "HDEL multiple"         => tests::hash::test_hdel_multiple,
+            "HDEL nonexistent"      => tests::hash::test_hdel_nonexistent,
+        ],
+        ("HGETALL", "New") [
+            "HGETALL full"          => tests::hash::test_hgetall_full,
+            "HGETALL empty"         => tests::hash::test_hgetall_empty,
+        ],
+        ("HEXISTS", "New") [
+            "HEXISTS true"          => tests::hash::test_hexists_true,
+            "HEXISTS false"         => tests::hash::test_hexists_false,
+        ],
+        ("HLEN", "New") [
+            "HLEN basic"            => tests::hash::test_hlen,
+            "HLEN empty"            => tests::hash::test_hlen_empty,
+        ],
+        ("HKEYS", "New") [
+            "HKEYS basic"           => tests::hash::test_hkeys,
+        ],
+        ("HVALS", "New") [
+            "HVALS basic"           => tests::hash::test_hvals,
+        ],
+        ("WRONGTYPE", "New") [
+            "HGET on string"        => tests::wrongtype::test_wrongtype_hget_on_string,
+            "HSET on string"        => tests::wrongtype::test_wrongtype_hset_on_string,
+        ],
+    ],
+    ("Set", "Set") [
+        ("SADD", "New") [
+            "SADD new key"          => tests::set::test_sadd_new_key,
+            "SADD existing"         => tests::set::test_sadd_existing_members,
+            "SADD duplicate"        => tests::set::test_sadd_duplicate,
+        ],
+        ("SMEMBERS", "New") [
+            "SMEMBERS basic"        => tests::set::test_smembers,
+            "SMEMBERS empty"        => tests::set::test_smembers_empty_key,
+        ],
+        ("SISMEMBER", "New") [
+            "SISMEMBER true"        => tests::set::test_sismember_true,
+            "SISMEMBER false"       => tests::set::test_sismember_false,
+            "SISMEMBER nonexistent" => tests::set::test_sismember_nonexistent_key,
+        ],
+        ("SREM", "New") [
+            "SREM single"           => tests::set::test_srem_single,
+            "SREM multiple"         => tests::set::test_srem_multiple,
+            "SREM nonexistent"      => tests::set::test_srem_nonexistent,
+        ],
+        ("SCARD", "New") [
+            "SCARD basic"           => tests::set::test_scard,
+            "SCARD empty"           => tests::set::test_scard_empty,
+        ],
+        ("WRONGTYPE", "New") [
+            "SADD on string"        => tests::wrongtype::test_wrongtype_sadd_on_string,
+        ],
+    ],
+    ("ZSet", "ZSet") [
+        ("ZADD", "New") [
+            "ZADD new key"              => tests::zset::test_zadd_new_key,
+            "ZADD update score"         => tests::zset::test_zadd_update_score,
+            "ZADD existing and new"     => tests::zset::test_zadd_existing_and_new,
+        ],
+        ("ZRANGE", "New") [
+            "ZRANGE full"               => tests::zset::test_zrange_by_index,
+            "ZRANGE partial"            => tests::zset::test_zrange_partial,
+            "ZRANGE withscores"         => tests::zset::test_zrange_withscores,
+            "ZRANGE empty key"          => tests::zset::test_zrange_empty_key,
+        ],
+        ("ZRANK", "New") [
+            "ZRANK existing"            => tests::zset::test_zrank_existing,
+            "ZRANK nonexistent"         => tests::zset::test_zrank_nonexistent,
+        ],
+        ("ZSCORE", "New") [
+            "ZSCORE existing"           => tests::zset::test_zscore_existing,
+            "ZSCORE nonexistent"        => tests::zset::test_zscore_nonexistent,
+        ],
+        ("WRONGTYPE", "New") [
+            "ZADD on string"            => tests::wrongtype::test_wrongtype_zadd_on_string,
+        ],
+    ],
 }
 
 pub struct BenchmarkDef {

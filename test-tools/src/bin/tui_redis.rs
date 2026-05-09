@@ -25,6 +25,9 @@ const CATEGORIES: &[Category] = &[
     Category { name: "Base",       stages: "Base",    filters: &["Base"] },
     Category { name: "List",       stages: "List",    filters: &["List"] },
     Category { name: "Stream",     stages: "Stream",  filters: &["Stream"] },
+    Category { name: "Hash",       stages: "Hash",    filters: &["Hash"] },
+    Category { name: "Set",        stages: "Set",     filters: &["Set"] },
+    Category { name: "ZSet",       stages: "ZSet",    filters: &["ZSet"] },
 ];
 
 // ── Hierarchical select items ────────────────────────────────────────────
