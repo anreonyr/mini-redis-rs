@@ -252,6 +252,12 @@ async fn dispatch_match<'a>(
         ParsedCmd::ClientSetName { name } => handlers::handle_client_setname(state, &name),
         ParsedCmd::ClientGetName => handlers::handle_client_getname(state),
         ParsedCmd::Hello => handlers::handle_hello(),
+        // Bitmap
+        ParsedCmd::GetBit { key, offset } => handlers::handle_getbit(&key, offset),
+        ParsedCmd::SetBit { key, offset, value } => handlers::handle_setbit(&key, offset, value),
+        ParsedCmd::BitCount { key, start, end } => handlers::handle_bitcount(&key, start, end),
+        ParsedCmd::BitOp { op, dest, keys } => handlers::handle_bitop(&op, &dest, &keys),
+        ParsedCmd::BitPos { key, bit, start, end } => handlers::handle_bitpos(&key, bit, start, end),
         // HyperLogLog
         ParsedCmd::PfAdd { key, elements } => handlers::handle_pfadd(&key, &elements),
         ParsedCmd::PfCount { keys } => handlers::handle_pfcount(&keys),

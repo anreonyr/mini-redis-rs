@@ -845,6 +845,42 @@ pub fn init() {
         since_stage: 0,
         summary: "Incrementally iterates sorted set elements",
     });
+    // Bitmap
+    reg.register(CommandInfo {
+        name: "GETBIT",
+        arity: 3,
+        category: "String",
+        since_stage: 0,
+        summary: "Gets the bit value at the given offset",
+    });
+    reg.register(CommandInfo {
+        name: "SETBIT",
+        arity: 4,
+        category: "String",
+        since_stage: 0,
+        summary: "Sets the bit value at the given offset",
+    });
+    reg.register(CommandInfo {
+        name: "BITCOUNT",
+        arity: -2,
+        category: "String",
+        since_stage: 0,
+        summary: "Counts set bits in a string",
+    });
+    reg.register(CommandInfo {
+        name: "BITOP",
+        arity: -4,
+        category: "String",
+        since_stage: 0,
+        summary: "Performs bitwise operations on strings",
+    });
+    reg.register(CommandInfo {
+        name: "BITPOS",
+        arity: -3,
+        category: "String",
+        since_stage: 0,
+        summary: "Finds the first set or clear bit",
+    });
     // HyperLogLog
     reg.register(CommandInfo {
         name: "PFADD",

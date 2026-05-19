@@ -779,6 +779,30 @@ tree_tests! {
             "PUBLISH no subscribers" => tests::pubsub::test_publish_no_subscribers,
         ],
     ],
+    ("Bitmap", "String Bitmap") [
+        ("GETBIT", "New") [
+            "GETBIT basic"        => tests::bitmap::test_getbit_basic,
+            "GETBIT nonexistent"  => tests::bitmap::test_getbit_nonexistent,
+            "GETBIT wrongtype"    => tests::bitmap::test_getbit_wrongtype,
+        ],
+        ("SETBIT", "New") [
+            "SETBIT basic"        => tests::bitmap::test_setbit_basic,
+            "SETBIT new key"      => tests::bitmap::test_setbit_new_key,
+        ],
+        ("BITCOUNT", "New") [
+            "BITCOUNT"            => tests::bitmap::test_bitcount,
+            "BITCOUNT range"      => tests::bitmap::test_bitcount_range,
+        ],
+        ("BITOP", "New") [
+            "BITOP AND"           => tests::bitmap::test_bitop_and,
+            "BITOP OR"            => tests::bitmap::test_bitop_or,
+            "BITOP NOT"           => tests::bitmap::test_bitop_not,
+            "BITOP XOR"           => tests::bitmap::test_bitop_xor,
+        ],
+        ("BITPOS", "New") [
+            "BITPOS"              => tests::bitmap::test_bitpos,
+        ],
+    ],
     ("HyperLogLog", "HyperLogLog") [
         ("PFADD", "New") [
             "PFADD basic"              => tests::hyperloglog::test_pfadd_basic,

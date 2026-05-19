@@ -438,6 +438,32 @@ pub enum ParsedCmd {
     Select {
         index: usize,
     },
+    // Bitmap
+    GetBit {
+        key: String,
+        offset: u64,
+    },
+    SetBit {
+        key: String,
+        offset: u64,
+        value: u8,
+    },
+    BitCount {
+        key: String,
+        start: Option<i64>,
+        end: Option<i64>,
+    },
+    BitOp {
+        op: String,
+        dest: String,
+        keys: Vec<String>,
+    },
+    BitPos {
+        key: String,
+        bit: u8,
+        start: Option<i64>,
+        end: Option<i64>,
+    },
     // HyperLogLog
     PfAdd {
         key: String,
@@ -591,6 +617,11 @@ impl ParsedCmd {
             ParsedCmd::Hello => "HELLO",
             ParsedCmd::Quit => "QUIT",
             ParsedCmd::Select { .. } => "SELECT",
+            ParsedCmd::GetBit { .. } => "GETBIT",
+            ParsedCmd::SetBit { .. } => "SETBIT",
+            ParsedCmd::BitCount { .. } => "BITCOUNT",
+            ParsedCmd::BitOp { .. } => "BITOP",
+            ParsedCmd::BitPos { .. } => "BITPOS",
             ParsedCmd::PfAdd { .. } => "PFADD",
             ParsedCmd::PfCount { .. } => "PFCOUNT",
             ParsedCmd::PfMerge { .. } => "PFMERGE",

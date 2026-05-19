@@ -1052,6 +1052,59 @@ impl ParsedCmd {
                 }
             }
             "HELLO" => ParsedCmd::Hello,
+            // Bitmap
+            "GETBIT" => {
+                if args.len() != 2 {
+                    return Err(wrong_arg_count("getbit"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let offset = iter.next().unwrap().parse::<u64>().map_err(|_| CmdError::InvalidInteger)?;
+                ParsedCmd::GetBit { key, offset }
+            }
+            "SETBIT" => {
+                if args.len() != 3 {
+                    return Err(wrong_arg_count("setbit"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let offset = iter.next().unwrap().parse::<u64>().map_err(|_| CmdError::InvalidInteger)?;
+                let val = iter.next().unwrap().parse::<u8>().map_err(|_| CmdError::InvalidInteger)?;
+                if val > 1 { return Err(CmdError::InvalidInteger); }
+                ParsedCmd::SetBit { key, offset, value: val }
+            }
+            "BITCOUNT" => {
+                if args.is_empty() || args.len() > 3 {
+                    return Err(wrong_arg_count("bitcount"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let start = iter.next().map(|s| s.parse::<i64>().map_err(|_| CmdError::InvalidInteger)).transpose()?;
+                let end = iter.next().map(|s| s.parse::<i64>().map_err(|_| CmdError::InvalidInteger)).transpose()?;
+                ParsedCmd::BitCount { key, start, end }
+            }
+            "BITOP" => {
+                if args.len() < 3 {
+                    return Err(wrong_arg_count("bitop"));
+                }
+                let mut iter = args.into_iter();
+                let op = iter.next().unwrap().to_uppercase();
+                let dest = iter.next().unwrap();
+                let keys: Vec<String> = iter.collect();
+                ParsedCmd::BitOp { op, dest, keys }
+            }
+            "BITPOS" => {
+                if args.is_empty() || args.len() > 4 {
+                    return Err(wrong_arg_count("bitpos"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let bit = iter.next().unwrap().parse::<u8>().map_err(|_| CmdError::InvalidInteger)?;
+                if bit > 1 { return Err(CmdError::InvalidInteger); }
+                let start = iter.next().map(|s| s.parse::<i64>().map_err(|_| CmdError::InvalidInteger)).transpose()?;
+                let end = iter.next().map(|s| s.parse::<i64>().map_err(|_| CmdError::InvalidInteger)).transpose()?;
+                ParsedCmd::BitPos { key, bit, start, end }
+            }
             // HyperLogLog
             "PFADD" => {
                 if args.len() < 2 {
