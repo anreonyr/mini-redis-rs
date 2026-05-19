@@ -6,18 +6,21 @@ static WAITERS: LazyLock<Mutex<HashMap<String, Vec<Weak<Notify>>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// RAII guard that unregisters a BLPOP waiter from all watched keys on drop.
-pub struct BlpopGuard {
+pub struct BlockGuard {
     keys: Vec<String>,
     notify_ptr: usize,
 }
 
-impl BlpopGuard {
+impl BlockGuard {
     fn new(keys: Vec<String>, notify: &Arc<Notify>) -> Self {
-        Self { keys, notify_ptr: Arc::as_ptr(notify) as usize }
+        Self {
+            keys,
+            notify_ptr: Arc::as_ptr(notify) as usize,
+        }
     }
 }
 
-impl Drop for BlpopGuard {
+impl Drop for BlockGuard {
     fn drop(&mut self) {
         let mut waiters = WAITERS.lock().unwrap_or_else(|e| e.into_inner());
         for key in &self.keys {
@@ -32,12 +35,15 @@ impl Drop for BlpopGuard {
 }
 
 /// Register a Notify for all given keys. Returns a guard that will unregister on drop.
-pub fn register(keys: &[String], notify: &Arc<Notify>) -> BlpopGuard {
+pub fn register(keys: &[String], notify: &Arc<Notify>) -> BlockGuard {
     let mut waiters = WAITERS.lock().unwrap_or_else(|e| e.into_inner());
     for key in keys {
-        waiters.entry(key.clone()).or_default().push(Arc::downgrade(notify));
+        waiters
+            .entry(key.clone())
+            .or_default()
+            .push(Arc::downgrade(notify));
     }
-    BlpopGuard::new(keys.to_vec(), notify)
+    BlockGuard::new(keys.to_vec(), notify)
 }
 
 /// Notify all waiters for a key.
