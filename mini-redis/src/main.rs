@@ -183,6 +183,10 @@ async fn handle_connection(mut stream: tokio::net::TcpStream) -> anyhow::Result<
             // After push loop returns (client disconnected or channel closed),
             // continue the outer loop
         }
+
+        if state.quit {
+            return Ok(());
+        }
     }
 }
 

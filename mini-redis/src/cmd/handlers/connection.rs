@@ -307,3 +307,45 @@ pub fn handle_unsubscribe(state: &mut ConnectionState, channels: &[String]) -> R
         RespType::Integer(0),
     ]))
 }
+
+// ── Connection management handlers ──
+
+pub fn handle_select(state: &mut ConnectionState, index: usize) -> RespType {
+    state.db_index = index;
+    RespType::SimpleString("OK".to_string())
+}
+
+pub fn handle_quit(state: &mut ConnectionState) -> RespType {
+    state.quit = true;
+    RespType::SimpleString("OK".to_string())
+}
+
+pub fn handle_client_setname(state: &mut ConnectionState, name: &str) -> RespType {
+    state.client_name = Some(name.to_string());
+    RespType::SimpleString("OK".to_string())
+}
+
+pub fn handle_client_getname(state: &mut ConnectionState) -> RespType {
+    match &state.client_name {
+        Some(name) => RespType::BulkString(Some(bytes::Bytes::copy_from_slice(name.as_bytes()))),
+        None => RespType::BulkString(None),
+    }
+}
+
+pub fn handle_hello() -> RespType {
+    let info = vec![
+        ("server", "redis"),
+        ("version", "0.1.0"),
+        ("proto", "2"),
+        ("id", "1"),
+        ("mode", "standalone"),
+        ("role", "master"),
+        ("modules", ""),
+    ];
+    let mut arr: Vec<RespType> = Vec::with_capacity(info.len() * 2);
+    for (k, v) in info {
+        arr.push(RespType::BulkString(Some(bytes::Bytes::copy_from_slice(k.as_bytes()))));
+        arr.push(RespType::BulkString(Some(bytes::Bytes::copy_from_slice(v.as_bytes()))));
+    }
+    RespType::Array(Some(arr))
+}

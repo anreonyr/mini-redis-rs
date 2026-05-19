@@ -382,6 +382,16 @@ pub enum ParsedCmd {
     Unsubscribe {
         channels: Vec<String>,
     },
+    // Connection management
+    ClientGetName,
+    ClientSetName {
+        name: String,
+    },
+    Hello,
+    Quit,
+    Select {
+        index: usize,
+    },
 }
 
 impl ParsedCmd {
@@ -487,6 +497,11 @@ impl ParsedCmd {
             ParsedCmd::Publish { .. } => "PUBLISH",
             ParsedCmd::Subscribe { .. } => "SUBSCRIBE",
             ParsedCmd::Unsubscribe { .. } => "UNSUBSCRIBE",
+            ParsedCmd::ClientGetName => "CLIENT",
+            ParsedCmd::ClientSetName { .. } => "CLIENT",
+            ParsedCmd::Hello => "HELLO",
+            ParsedCmd::Quit => "QUIT",
+            ParsedCmd::Select { .. } => "SELECT",
         }
     }
 }

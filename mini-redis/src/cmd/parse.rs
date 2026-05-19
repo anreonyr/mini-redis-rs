@@ -892,6 +892,26 @@ impl ParsedCmd {
                 }
                 ParsedCmd::Watch { keys: args }
             }
+            "SELECT" => {
+                let index = args.into_iter().next()
+                    .ok_or_else(|| wrong_arg_count("select"))?
+                    .parse::<usize>()
+                    .map_err(|_| CmdError::InvalidInteger)?;
+                ParsedCmd::Select { index }
+            }
+            "QUIT" => ParsedCmd::Quit,
+            "CLIENT" => {
+                let sub = args.first().map(|s| s.to_uppercase());
+                match sub.as_deref() {
+                    Some("SETNAME") => {
+                        let name = args.get(1).ok_or_else(|| wrong_arg_count("client setname"))?;
+                        ParsedCmd::ClientSetName { name: name.clone() }
+                    }
+                    Some("GETNAME") => ParsedCmd::ClientGetName,
+                    _ => return Err(CmdError::SyntaxError),
+                }
+            }
+            "HELLO" => ParsedCmd::Hello,
             _ => return Err(CmdError::UnknownCommand),
         })
     }

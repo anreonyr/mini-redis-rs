@@ -227,5 +227,11 @@ async fn dispatch_match<'a>(
         ParsedCmd::Unsubscribe { channels } => {
             handlers::handle_unsubscribe(state, &channels)
         }
+        // Connection management
+        ParsedCmd::Select { index } => handlers::handle_select(state, index),
+        ParsedCmd::Quit => handlers::handle_quit(state),
+        ParsedCmd::ClientSetName { name } => handlers::handle_client_setname(state, &name),
+        ParsedCmd::ClientGetName => handlers::handle_client_getname(state),
+        ParsedCmd::Hello => handlers::handle_hello(),
     }
 }

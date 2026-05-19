@@ -440,6 +440,34 @@ pub fn init() {
         summary: "Authenticates the connection using a password",
     });
     reg.register(CommandInfo {
+        name: "SELECT",
+        arity: 2,
+        category: "Connection",
+        since_stage: 0,
+        summary: "Switches to the specified database",
+    });
+    reg.register(CommandInfo {
+        name: "QUIT",
+        arity: 1,
+        category: "Connection",
+        since_stage: 0,
+        summary: "Closes the connection",
+    });
+    reg.register(CommandInfo {
+        name: "CLIENT",
+        arity: -2,
+        category: "Connection",
+        since_stage: 0,
+        summary: "Sets or gets the connection name",
+    });
+    reg.register(CommandInfo {
+        name: "HELLO",
+        arity: 1,
+        category: "Connection",
+        since_stage: 0,
+        summary: "Handshake with the server",
+    });
+    reg.register(CommandInfo {
         name: "PUBLISH",
         arity: 3,
         category: "PubSub",
