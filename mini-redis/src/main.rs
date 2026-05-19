@@ -1,4 +1,4 @@
-use mini_redis::{cmd, config, db, inline, registry, resp};
+use mini_redis::{cmd, config, db, inline, persist, registry, resp};
 use std::time::Duration;
 use tokio::time::Instant;
 
@@ -23,8 +23,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Auto-load persistence file on startup
     let path = config::with_config(|cfg| cfg.db_path());
-    if config::with_config(|cfg| mini_redis::persist::file_exists(&cfg.db_path())) {
-        match mini_redis::persist::load(&path) {
+    if persist::file_exists(&path) {
+        match persist::load(&path) {
             Ok(n) => println!("Loaded {} keys from {}", n, path),
             Err(e) => eprintln!("Failed to load persistence file: {}", e),
         }
@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
         _ = signal::ctrl_c() => {
             println!("\nCtrl+C received, saving data...");
             let path = config::with_config(|cfg| cfg.db_path());
-            if let Err(e) = mini_redis::persist::save(&path) {
+            if let Err(e) = persist::save(&path) {
                 eprintln!("Failed to save data: {}", e);
             } else {
                 println!("Data saved to {}", path);
