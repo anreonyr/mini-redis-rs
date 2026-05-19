@@ -1,6 +1,6 @@
 use super::super::types::{CmdError, ParsedCmd, XGroupSub, wrong_arg_count};
 
-pub fn parse_stream_cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
+pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
     match cmd {
         "XADD" => {
             if args.len() < 3 || args.len() % 2 != 0 {

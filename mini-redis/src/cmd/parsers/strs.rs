@@ -1,7 +1,7 @@
 use super::super::types::{CmdError, ParsedCmd, wrong_arg_count};
 use std::time::Duration;
 
-pub fn parse_string_cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
+pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
     match cmd {
         "SET" => {
             if args.len() != 2 && args.len() != 4 {
@@ -179,31 +179,6 @@ pub fn parse_string_cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdEr
             let start = iter.next().map(|s| s.parse::<i64>().map_err(|_| CmdError::InvalidInteger)).transpose()?;
             let end = iter.next().map(|s| s.parse::<i64>().map_err(|_| CmdError::InvalidInteger)).transpose()?;
             Ok(ParsedCmd::BitPos { key, bit, start, end })
-        }
-        // HyperLogLog
-        "PFADD" => {
-            if args.len() < 2 {
-                return Err(wrong_arg_count("pfadd"));
-            }
-            let mut iter = args.into_iter();
-            let key = iter.next().unwrap();
-            let elements: Vec<String> = iter.collect();
-            Ok(ParsedCmd::PfAdd { key, elements })
-        }
-        "PFCOUNT" => {
-            if args.is_empty() {
-                return Err(wrong_arg_count("pfcount"));
-            }
-            Ok(ParsedCmd::PfCount { keys: args })
-        }
-        "PFMERGE" => {
-            if args.len() < 2 {
-                return Err(wrong_arg_count("pfmerge"));
-            }
-            let mut iter = args.into_iter();
-            let dest = iter.next().unwrap();
-            let sources: Vec<String> = iter.collect();
-            Ok(ParsedCmd::PfMerge { dest, sources })
         }
         _ => Err(CmdError::UnknownCommand),
     }

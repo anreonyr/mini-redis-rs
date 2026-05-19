@@ -43,7 +43,6 @@ fn type_name(entry: &Entry) -> &'static str {
         Value::Hash(_) => "hash",
         Value::Set(_) => "set",
         Value::ZSet(_) => "zset",
-        Value::HyperLogLog(_) => "hyperloglog",
     }
 }
 

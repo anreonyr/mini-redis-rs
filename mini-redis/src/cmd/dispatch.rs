@@ -304,10 +304,6 @@ async fn dispatch_match<'a>(
         ParsedCmd::BitCount { key, start, end } => handlers::handle_bitcount(&key, start, end),
         ParsedCmd::BitOp { op, dest, keys } => handlers::handle_bitop(&op, &dest, &keys),
         ParsedCmd::BitPos { key, bit, start, end } => handlers::handle_bitpos(&key, bit, start, end),
-        // HyperLogLog
-        ParsedCmd::PfAdd { key, elements } => handlers::handle_pfadd(&key, &elements),
-        ParsedCmd::PfCount { keys } => handlers::handle_pfcount(&keys),
-        ParsedCmd::PfMerge { dest, sources } => handlers::handle_pfmerge(&dest, &sources),
         // Scan
         ParsedCmd::Scan { cursor, match_pattern, count, type_filter } => {
             handlers::handle_scan(cursor, match_pattern, count, type_filter)

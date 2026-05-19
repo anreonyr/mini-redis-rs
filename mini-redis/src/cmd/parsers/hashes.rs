@@ -1,6 +1,6 @@
 use super::super::types::{CmdError, ParsedCmd, wrong_arg_count};
 
-pub fn parse_hash_cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
+pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
     match cmd {
         "HSET" => {
             if args.len() < 3 || args.len() % 2 == 0 {

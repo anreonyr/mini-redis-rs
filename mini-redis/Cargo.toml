@@ -11,4 +11,3 @@ thiserror = "2.0.18"                                # error handling
 serde = { version = "1", features = ["derive"] }
 bincode = "1"
 tokio = { version = "1.23.0", features = ["full"] } # async networking
-hyperloglog = { version = "1.0", features = ["with_serde"] }

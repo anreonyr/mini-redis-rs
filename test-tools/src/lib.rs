@@ -308,22 +308,26 @@ macro_rules! tree_tests {
         ];
 
         pub fn run_test<'a>(def: &'a TestDef, client: &'a mut RedisClient) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send + 'a>> {
-            // Wrap in async move so the giant match's state machine lives on the
-            // heap (Box) instead of the stack, avoiding debug-mode stack overflow.
-            Box::pin(async move {
-                let subcat = def.subcategory.unwrap_or("");
-                let name = def.name;
-                match (subcat, name) {
-                    $(
-                        $(
+            // Dispatch by category first, so each category's async block is small.
+            // A single giant async match over all 150+ tests creates a huge enum
+            // that overflows the 4MB stack in debug mode.
+            match def.category {
+                $(
+                    $cat => Box::pin(async move {
+                        let subcat = def.subcategory.unwrap_or("");
+                        let name = def.name;
+                        match (subcat, name) {
                             $(
-                                ($sub, $name) => $handler(client).await,
-                            )+
-                        )*
-                    )+
-                    _ => Err(format!("unknown test: {} / {}", subcat, name)),
-                }
-            })
+                                $(
+                                    ($sub, $name) => $handler(client).await,
+                                )+
+                            )*
+                            _ => Err(format!("unknown test: {} / {}", subcat, name)),
+                        }
+                    }),
+                )*
+                cat => Box::pin(async move { Err(format!("unknown category: {cat}")) }),
+            }
         }
     };
 }
@@ -857,21 +861,6 @@ tree_tests! {
         ],
         ("WRONGTYPE", "New") [
             "GEOADD on string"          => tests::geo::test_geo_wrongtype,
-        ],
-    ],
-    ("HyperLogLog", "HyperLogLog") [
-        ("PFADD", "New") [
-            "PFADD basic"              => tests::hyperloglog::test_pfadd_basic,
-            "PFADD duplicate"          => tests::hyperloglog::test_pfadd_duplicate,
-            "PFADD wrongtype"          => tests::hyperloglog::test_pfadd_wrongtype,
-        ],
-        ("PFCOUNT", "New") [
-            "PFCOUNT basic"            => tests::hyperloglog::test_pfcount_basic,
-            "PFCOUNT nonexistent"      => tests::hyperloglog::test_pfcount_nonexistent,
-            "PFCOUNT multiple keys"    => tests::hyperloglog::test_pfcount_multiple_keys,
-        ],
-        ("PFMERGE", "New") [
-            "PFMERGE basic"            => tests::hyperloglog::test_pfmerge_basic,
         ],
     ],
 }

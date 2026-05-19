@@ -7,29 +7,27 @@ impl ParsedCmd {
     /// Delegates to category-specific parsers in `cmd::parsers::*`.
     pub fn parse(cmd: &str, args: Vec<String>) -> Result<Self, CmdError> {
         // Try each category parser in order. Each returns Err(UnknownCommand)
-        // for commands it doesn't handle.
-        if let Ok(p) = super::parsers::strs::parse_string_cmd(cmd, args.clone()) {
-            return Ok(p);
+        // for commands it doesn't handle. Any other error (WrongArgCount,
+        // SyntaxError, InvalidInteger) is a real parse failure — propagate it.
+        macro_rules! try_parser {
+            ($parser:ident) => {
+                match super::parsers::$parser::cmd(cmd, args.clone()) {
+                    Err(CmdError::UnknownCommand) => {}
+                    other => return other,
+                }
+            };
         }
-        if let Ok(p) = super::parsers::lists::parse_list_cmd(cmd, args.clone()) {
-            return Ok(p);
+        try_parser!(strs);
+        try_parser!(lists);
+        try_parser!(streams);
+        try_parser!(hashes);
+        try_parser!(sets);
+        try_parser!(zsets);
+        // Last parser — takes ownership of args to avoid one final clone.
+        match super::parsers::admin::cmd(cmd, args) {
+            Err(CmdError::UnknownCommand) => Err(CmdError::UnknownCommand),
+            other => other,
         }
-        if let Ok(p) = super::parsers::streams::parse_stream_cmd(cmd, args.clone()) {
-            return Ok(p);
-        }
-        if let Ok(p) = super::parsers::hashes::parse_hash_cmd(cmd, args.clone()) {
-            return Ok(p);
-        }
-        if let Ok(p) = super::parsers::sets::parse_set_cmd(cmd, args.clone()) {
-            return Ok(p);
-        }
-        if let Ok(p) = super::parsers::zsets::parse_zset_cmd(cmd, args.clone()) {
-            return Ok(p);
-        }
-        if let Ok(p) = super::parsers::admin::parse_admin_cmd(cmd, args) {
-            return Ok(p);
-        }
-        Err(CmdError::UnknownCommand)
     }
 }
 

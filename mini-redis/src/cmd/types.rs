@@ -540,18 +540,6 @@ pub enum ParsedCmd {
         start: Option<i64>,
         end: Option<i64>,
     },
-    // HyperLogLog
-    PfAdd {
-        key: String,
-        elements: Vec<String>,
-    },
-    PfCount {
-        keys: Vec<String>,
-    },
-    PfMerge {
-        dest: String,
-        sources: Vec<String>,
-    },
     // Scan
     Scan {
         cursor: u64,
@@ -704,9 +692,6 @@ impl ParsedCmd {
             ParsedCmd::BitCount { .. } => "BITCOUNT",
             ParsedCmd::BitOp { .. } => "BITOP",
             ParsedCmd::BitPos { .. } => "BITPOS",
-            ParsedCmd::PfAdd { .. } => "PFADD",
-            ParsedCmd::PfCount { .. } => "PFCOUNT",
-            ParsedCmd::PfMerge { .. } => "PFMERGE",
             ParsedCmd::Scan { .. } => "SCAN",
             ParsedCmd::Sscan { .. } => "SSCAN",
             ParsedCmd::Hscan { .. } => "HSCAN",

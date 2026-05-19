@@ -1,6 +1,6 @@
 use super::super::types::{CmdError, ParsedCmd, wrong_arg_count};
 
-pub fn parse_zset_cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
+pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
     match cmd {
         "ZADD" => {
             if args.len() < 3 || args.len() % 2 == 0 {

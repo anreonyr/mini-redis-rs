@@ -21,6 +21,12 @@ static DBS: LazyLock<Mutex<Vec<HashMap<String, Entry>>>> = LazyLock::new(|| {
 });
 static VERSION_COUNTER: AtomicU64 = AtomicU64::new(1);
 
+/// Lock the global DBS mutex, recovering from poison if a previous
+/// handler panicked (e.g. hyperloglog assertion failure).
+fn lock_dbs() -> std::sync::MutexGuard<'static, Vec<HashMap<String, Entry>>> {
+    DBS.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Set the current database index for this connection's task.
 /// No longer a global atomic — uses `tokio::task_local!` so each
 /// spawned connection task has its own independent value.
@@ -82,7 +88,6 @@ pub enum Value {
     Hash(HashMap<Bytes, Bytes>),
     Set(HashSet<Bytes>),
     ZSet(BTreeSet<(i64, Bytes)>),
-    HyperLogLog(Vec<u8>),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -108,7 +113,7 @@ where
     F: FnOnce(&mut HashMap<String, Entry>) -> R,
 {
     let idx = DB_INDEX.with(|cell| cell.get());
-    let mut dbs = DBS.lock().unwrap();
+    let mut dbs = lock_dbs();
     f(&mut dbs[idx])
 }
 
@@ -116,13 +121,13 @@ pub fn with_db_at<F, R>(index: usize, f: F) -> R
 where
     F: FnOnce(&mut HashMap<String, Entry>) -> R,
 {
-    let mut dbs = DBS.lock().unwrap();
+    let mut dbs = lock_dbs();
     let idx = index.min(dbs.len() - 1);
     f(&mut dbs[idx])
 }
 
 pub fn flushdb() {
-    let mut dbs = DBS.lock().unwrap();
+    let mut dbs = lock_dbs();
     for db in dbs.iter_mut() {
         db.clear();
     }

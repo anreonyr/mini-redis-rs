@@ -1,6 +1,6 @@
 use super::super::types::{CmdError, ParsedCmd, wrong_arg_count};
 
-pub fn parse_list_cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
+pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
     match cmd {
         "RPUSH" => {
             if args.len() < 2 {

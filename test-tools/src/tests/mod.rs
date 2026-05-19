@@ -16,7 +16,6 @@ pub mod hash;
 pub mod set;
 pub mod zset;
 pub mod auth;
-pub mod hyperloglog;
 pub mod scan;
 pub mod bitmap;
 pub mod geo;

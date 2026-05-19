@@ -36,7 +36,6 @@ const CATEGORIES: &[Category] = &[
     Category { name: "PubSub",     stages: "PubSub",           filters: &["PubSub"] },
     Category { name: "Bitmap",     stages: "String Bitmap",    filters: &["String Bitmap"] },
     Category { name: "Geo",        stages: "Geo",              filters: &["Geo"] },
-    Category { name: "HyperLogLog",stages: "HyperLogLog",      filters: &["HyperLogLog"] },
 ];
 
 // ── Hierarchical select items ────────────────────────────────────────────

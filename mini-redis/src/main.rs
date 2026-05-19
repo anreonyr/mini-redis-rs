@@ -39,12 +39,14 @@ async fn main() -> anyhow::Result<()> {
         .context("failed to bind to 127.0.0.1:6379")?;
 
     let eviction = tokio::spawn(async {
-        loop {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            db::with_db(|db| {
-                db.retain(|_, entry| !entry.expiry.is_some_and(|exp| Instant::now() >= exp));
-            });
-        }
+        DB_INDEX.scope(std::cell::Cell::new(0), async {
+            loop {
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                db::with_db(|db| {
+                    db.retain(|_, entry| !entry.expiry.is_some_and(|exp| Instant::now() >= exp));
+                });
+            }
+        }).await;
     });
 
     let mut connections = JoinSet::new();
@@ -54,11 +56,13 @@ async fn main() -> anyhow::Result<()> {
         _ = signal::ctrl_c() => {
             println!("\nCtrl+C received, saving data...");
             let path = config::with_config(|cfg| cfg.db_path());
-            if let Err(e) = persist::save(&path).await {
-                eprintln!("Failed to save data: {}", e);
-            } else {
-                println!("Data saved to {}", path);
-            }
+            DB_INDEX.scope(std::cell::Cell::new(0), async {
+                if let Err(e) = persist::save(&path).await {
+                    eprintln!("Failed to save data: {}", e);
+                } else {
+                    println!("Data saved to {}", path);
+                }
+            }).await;
             println!("Shutting down...");
             Ok(())
         }

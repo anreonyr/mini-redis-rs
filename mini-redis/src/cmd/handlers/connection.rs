@@ -5,6 +5,7 @@ use bytes::Bytes;
 use crate::cmd::auth::{ConnectionState, TransactionState};
 use crate::config;
 use crate::db;
+use crate::db::DB_INDEX;
 use crate::pubsub;
 use crate::registry;
 use crate::resp::RespType;
@@ -172,10 +173,12 @@ pub fn handle_bgsave() -> RespType {
     let path = config::with_config(|cfg| cfg.db_path());
     // Spawn a background task that uses the async save
     tokio::spawn(async move {
-        match crate::persist::save(&path).await {
-            Ok(()) => println!("BGSAVE completed to {}", path),
-            Err(e) => eprintln!("BGSAVE error: {}", e),
-        }
+        DB_INDEX.scope(std::cell::Cell::new(0), async {
+            match crate::persist::save(&path).await {
+                Ok(()) => println!("BGSAVE completed to {}", path),
+                Err(e) => eprintln!("BGSAVE error: {}", e),
+            }
+        }).await;
     });
     RespType::SimpleString("OK".to_string())
 }
