@@ -1,5 +1,14 @@
 use std::time::Duration;
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum XGroupSub {
+    Create { group: String, id: String },
+    CreateConsumer { group: String, consumer: String },
+    DelConsumer { group: String, consumer: String },
+    Destroy { group: String },
+    SetId { group: String, id: String },
+}
+
 /// All arguments have been parsed and validated at this point.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ParsedCmd {
@@ -131,6 +140,43 @@ pub enum ParsedCmd {
         ids: Vec<String>,
     },
     Xread {
+        count: Option<u64>,
+        keys: Vec<String>,
+        ids: Vec<String>,
+    },
+    // Consumer Groups
+    XAck {
+        key: String,
+        group: String,
+        ids: Vec<String>,
+    },
+    XClaim {
+        key: String,
+        group: String,
+        consumer: String,
+        min_idle: u64,
+        ids: Vec<String>,
+    },
+    XGroup {
+        sub: XGroupSub,
+        key: String,
+    },
+    XInfo {
+        sub: String,
+        key: String,
+        group: Option<String>,
+    },
+    XPending {
+        key: String,
+        group: String,
+        start: String,
+        end: String,
+        count: u64,
+        consumer: Option<String>,
+    },
+    XReadGroup {
+        group: String,
+        consumer: String,
         count: Option<u64>,
         keys: Vec<String>,
         ids: Vec<String>,
@@ -438,6 +484,12 @@ impl ParsedCmd {
             ParsedCmd::Xtrim { .. } => "XTRIM",
             ParsedCmd::Xdel { .. } => "XDEL",
             ParsedCmd::Xread { .. } => "XREAD",
+            ParsedCmd::XAck { .. } => "XACK",
+            ParsedCmd::XClaim { .. } => "XCLAIM",
+            ParsedCmd::XGroup { .. } => "XGROUP",
+            ParsedCmd::XInfo { .. } => "XINFO",
+            ParsedCmd::XPending { .. } => "XPENDING",
+            ParsedCmd::XReadGroup { .. } => "XREADGROUP",
             ParsedCmd::Hset { .. } => "HSET",
             ParsedCmd::Hget { .. } => "HGET",
             ParsedCmd::Hdel { .. } => "HDEL",

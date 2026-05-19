@@ -121,6 +121,15 @@ async fn dispatch_match<'a>(
         } => handlers::handle_xtrim(&key, &strategy, threshold, exact),
         ParsedCmd::Xdel { key, ids } => handlers::handle_xdel(&key, &ids),
         ParsedCmd::Xread { count, keys, ids } => handlers::handle_xread(count, &keys, &ids),
+        // Consumer Groups
+        ParsedCmd::XAck { .. }
+        | ParsedCmd::XClaim { .. }
+        | ParsedCmd::XGroup { .. }
+        | ParsedCmd::XInfo { .. }
+        | ParsedCmd::XPending { .. }
+        | ParsedCmd::XReadGroup { .. } => {
+            resp::RespType::Error("ERR not implemented".to_string())
+        }
         // Hash
         ParsedCmd::Hset { key, fields } => handlers::handle_hset(&key, &fields),
         ParsedCmd::Hget { key, field } => handlers::handle_hget(&key, &field),

@@ -33,6 +33,7 @@ pub struct StreamData {
     pub entries: VecDeque<StreamEntry>,
     pub last_timestamp_ms: i64,
     pub last_seq: u64,
+    pub groups: HashMap<String, ConsumerGroup>,
 }
 
 impl StreamData {
@@ -41,8 +42,30 @@ impl StreamData {
             entries: VecDeque::new(),
             last_timestamp_ms: 0,
             last_seq: 0,
+            groups: HashMap::new(),
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ConsumerGroup {
+    pub name: String,
+    pub last_delivered_id: String,
+    pub pending: HashMap<String, Vec<PendingEntry>>, // consumer_name → pending entries
+    pub consumers: HashMap<String, ConsumerInfo>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PendingEntry {
+    pub id: String,
+    pub consumer_name: String,
+    pub delivery_count: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ConsumerInfo {
+    pub name: String,
+    pub pending_count: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
