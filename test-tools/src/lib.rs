@@ -275,6 +275,147 @@ pub mod benchmarks {
             avg_latency_us: rpush_elapsed.as_micros() as f64 / n as f64,
         })
     }
+
+    // ── Data structure benchmarks ─────────────────────────────────────
+
+    pub async fn bench_hash_ops(client: &mut RedisClient, n: usize) -> Result<BenchResult, String> {
+        let key = "stress:hash";
+        let start = Instant::now();
+        for i in 0..n {
+            let r = client.cmd(&["HSET", key, &format!("f{i}"), &format!("v{i}")]).await?;
+            assert_resp!(r, crate::helpers::int(1), "HSET");
+        }
+        let hset_elapsed = start.elapsed();
+        let _ = client.cmd(&["HGETALL", key]).await?;
+        Ok(BenchResult {
+            name: "hash_ops",
+            ops: n as u64,
+            elapsed_ms: hset_elapsed.as_millis() as u64,
+            avg_latency_us: hset_elapsed.as_micros() as f64 / n as f64,
+        })
+    }
+
+    pub async fn bench_set_ops(client: &mut RedisClient, n: usize) -> Result<BenchResult, String> {
+        let start = Instant::now();
+        for i in 0..n {
+            let _ = client.cmd(&["SADD", "stress:set1", &format!("m{i}")]).await?;
+        }
+        for i in 0..n / 2 {
+            let _ = client.cmd(&["SADD", "stress:set2", &format!("m{i}")]).await?;
+        }
+        let add_elapsed = start.elapsed();
+        let _ = client.cmd(&["SMEMBERS", "stress:set1"]).await?;
+        let _ = client.cmd(&["SINTER", "stress:set1", "stress:set2"]).await?;
+        Ok(BenchResult {
+            name: "set_ops",
+            ops: (n + n / 2) as u64,
+            elapsed_ms: add_elapsed.as_millis() as u64,
+            avg_latency_us: add_elapsed.as_micros() as f64 / (n + n / 2) as f64,
+        })
+    }
+
+    pub async fn bench_zset_ops(client: &mut RedisClient, n: usize) -> Result<BenchResult, String> {
+        let start = Instant::now();
+        for i in 0..n {
+            let _ = client.cmd(&["ZADD", "stress:zset", &i.to_string(), &format!("m{i}")]).await?;
+        }
+        let add_elapsed = start.elapsed();
+        let _ = client.cmd(&["ZRANGE", "stress:zset", "0", "-1", "WITHSCORES"]).await?;
+        Ok(BenchResult {
+            name: "zset_ops",
+            ops: n as u64,
+            elapsed_ms: add_elapsed.as_millis() as u64,
+            avg_latency_us: add_elapsed.as_micros() as f64 / n as f64,
+        })
+    }
+
+    pub async fn bench_list_rw(client: &mut RedisClient, n: usize) -> Result<BenchResult, String> {
+        let key = "stress:listrw";
+        let start = Instant::now();
+        for i in 0..n {
+            let _ = client.cmd(&["LPUSH", key, &format!("v{i}")]).await?;
+        }
+        for _ in 0..n {
+            let _ = client.cmd(&["RPOP", key]).await?;
+        }
+        let elapsed = start.elapsed();
+        Ok(BenchResult {
+            name: "list_rw",
+            ops: (n * 2) as u64,
+            elapsed_ms: elapsed.as_millis() as u64,
+            avg_latency_us: elapsed.as_micros() as f64 / (n * 2) as f64,
+        })
+    }
+
+    pub async fn bench_stream_ops(client: &mut RedisClient, n: usize) -> Result<BenchResult, String> {
+        let key = "stress:stream";
+        let start = Instant::now();
+        for i in 0..n {
+            let _ = client.cmd(&["XADD", key, "*", "f", &i.to_string()]).await?;
+        }
+        let add_elapsed = start.elapsed();
+        let _ = client.cmd(&["XRANGE", key, "-", "+"]).await?;
+        Ok(BenchResult {
+            name: "stream_ops",
+            ops: n as u64,
+            elapsed_ms: add_elapsed.as_millis() as u64,
+            avg_latency_us: add_elapsed.as_micros() as f64 / n as f64,
+        })
+    }
+
+    pub async fn bench_bitmap_ops(client: &mut RedisClient, n: usize) -> Result<BenchResult, String> {
+        let key = "stress:bits";
+        let start = Instant::now();
+        for i in 0..n {
+            let bit = if i % 2 == 0 { "1" } else { "0" };
+            let _ = client.cmd(&["SETBIT", key, &i.to_string(), bit]).await?;
+        }
+        let set_elapsed = start.elapsed();
+        let _ = client.cmd(&["BITCOUNT", key]).await?;
+        let _ = client.cmd(&["BITOP", "AND", "stress:bits_and", key, key]).await?;
+        Ok(BenchResult {
+            name: "bitmap_ops",
+            ops: n as u64,
+            elapsed_ms: set_elapsed.as_millis() as u64,
+            avg_latency_us: set_elapsed.as_micros() as f64 / n as f64,
+        })
+    }
+
+    pub async fn bench_ping_throughput(client: &mut RedisClient, n: usize) -> Result<BenchResult, String> {
+        let start = Instant::now();
+        for _ in 0..n {
+            let _ = client.cmd(&["PING"]).await?;
+        }
+        let elapsed = start.elapsed();
+        Ok(BenchResult {
+            name: "ping",
+            ops: n as u64,
+            elapsed_ms: elapsed.as_millis() as u64,
+            avg_latency_us: elapsed.as_micros() as f64 / n as f64,
+        })
+    }
+
+    pub async fn bench_geo_ops(client: &mut RedisClient, n: usize) -> Result<BenchResult, String> {
+        let key = "stress:geo";
+        let start = Instant::now();
+        for i in 0..n {
+            let lon = 13.3 + (i as f64 * 0.01);
+            let lat = 52.5 + (i as f64 * 0.005);
+            let _ = client.cmd(&[
+                "GEOADD", key,
+                &format!("{lon:.4}"), &format!("{lat:.4}"),
+                &format!("p{i}"),
+            ]).await?;
+        }
+        let add_elapsed = start.elapsed();
+        let _ = client.cmd(&["GEODIST", key, "p0", &format!("p{}", n - 1)]).await?;
+        Ok(BenchResult {
+            name: "geo_ops",
+            ops: n as u64,
+            elapsed_ms: add_elapsed.as_millis() as u64,
+            avg_latency_us: add_elapsed.as_micros() as f64 / n as f64,
+        })
+    }
 }
 
 // ── tree_tests! macro: generates ALL_TESTS + run_test from tree ────────
@@ -877,6 +1018,14 @@ pub const BENCHMARKS: &[BenchmarkDef] = &[
     BenchmarkDef { name: "Many keys",              filter: "many_keys",     description: "1000 keys" },
     BenchmarkDef { name: "Concurrent connections", filter: "concurrent",    description: "10 connections" },
     BenchmarkDef { name: "Large list",             filter: "list",          description: "5000 elements" },
+    BenchmarkDef { name: "Hash ops",               filter: "hash",          description: "HSET 1000 + HGETALL" },
+    BenchmarkDef { name: "Set ops",                filter: "set",           description: "SADD 1000 + SMEMBERS + SINTER" },
+    BenchmarkDef { name: "ZSet ops",               filter: "zset",          description: "ZADD 1000 + ZRANGE" },
+    BenchmarkDef { name: "List RPUSH+RPOP",         filter: "list_rw",       description: "LPUSH/RPOP 1000" },
+    BenchmarkDef { name: "Stream ops",              filter: "stream",        description: "XADD 500 + XRANGE" },
+    BenchmarkDef { name: "Bitmap ops",              filter: "bitmap",        description: "SETBIT 1000 + BITCOUNT" },
+    BenchmarkDef { name: "Ping throughput",         filter: "ping",          description: "PING 10000" },
+    BenchmarkDef { name: "Geo ops",                 filter: "geo",           description: "GEOADD 500 + GEODIST" },
 ];
 
 pub async fn run_bench(filter: &str, client: &mut RedisClient, addr: &str) -> Result<Vec<BenchResult>, String> {
@@ -886,6 +1035,14 @@ pub async fn run_bench(filter: &str, client: &mut RedisClient, addr: &str) -> Re
         "many_keys"   => benchmarks::bench_many_keys(client, 1000).await.map(|r| vec![r]),
         "concurrent"  => benchmarks::bench_concurrent_connections(addr, 10).await.map(|r| vec![r]),
         "list"        => benchmarks::bench_list_massive_rpush_lrange(client, 5000).await.map(|r| vec![r]),
+        "hash"        => benchmarks::bench_hash_ops(client, 1000).await.map(|r| vec![r]),
+        "set"         => benchmarks::bench_set_ops(client, 1000).await.map(|r| vec![r]),
+        "zset"        => benchmarks::bench_zset_ops(client, 1000).await.map(|r| vec![r]),
+        "list_rw"     => benchmarks::bench_list_rw(client, 1000).await.map(|r| vec![r]),
+        "stream"      => benchmarks::bench_stream_ops(client, 500).await.map(|r| vec![r]),
+        "bitmap"      => benchmarks::bench_bitmap_ops(client, 1000).await.map(|r| vec![r]),
+        "ping"        => benchmarks::bench_ping_throughput(client, 10000).await.map(|r| vec![r]),
+        "geo"         => benchmarks::bench_geo_ops(client, 500).await.map(|r| vec![r]),
         _ => Err(format!("unknown benchmark: {filter}")),
     }
 }
