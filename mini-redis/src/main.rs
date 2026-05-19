@@ -7,7 +7,10 @@ use inline::{apply_backspace, find_line, parse_quoted_args, strip_iac};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::signal;
+use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::task::JoinSet;
+
+use mini_redis::pubsub::Message;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -97,6 +100,42 @@ async fn accept_loop(
     }
 }
 
+/// Push incoming pub/sub messages to the client until the channel is closed.
+async fn push_pubsub_messages(
+    stream: &mut tokio::net::TcpStream,
+    mut rx: UnboundedReceiver<Message>,
+) -> anyhow::Result<()> {
+    let mut read_buf = [0u8; 64]; // small buffer, we only check for disconnect
+    loop {
+        tokio::select! {
+            // Check if client disconnected (socket read returns 0)
+            result = stream.read(&mut read_buf) => {
+                let n = result.context("pubsub read error")?;
+                if n == 0 { return Ok(()); }
+                // For now, ignore incoming commands in subscription mode
+                // A full implementation would handle SUBSCRIBE/UNSUBSCRIBE
+            }
+            msg = rx.recv() => {
+                match msg {
+                    Some(msg) => {
+                        let response = resp::RespType::Array(Some(vec![
+                            resp::RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"message"))),
+                            resp::RespType::BulkString(Some(bytes::Bytes::copy_from_slice(msg.channel.as_bytes()))),
+                            resp::RespType::BulkString(Some(bytes::Bytes::copy_from_slice(msg.payload.as_bytes()))),
+                        ]));
+                        stream.write_all(&response.serialize()).await
+                            .context("failed to write pubsub message")?;
+                    }
+                    None => {
+                        // Channel closed, subscription ended
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+}
+
 async fn handle_connection(mut stream: tokio::net::TcpStream) -> anyhow::Result<()> {
     let decoder = resp::Decoder::new();
     let mut read_buf = [0u8; 8192];
@@ -133,6 +172,16 @@ async fn handle_connection(mut stream: tokio::net::TcpStream) -> anyhow::Result<
             process_inline(&mut pending, &mut stream, &mut state).await?;
         } else {
             process_resp(&decoder, &mut pending, &mut stream, &mut state).await?;
+        }
+
+        if state.is_subscribed() {
+            // Subscription mode: take the rx and enter push loop
+            let sub = state.subscription.take();
+            if let Some(sub_state) = sub {
+                push_pubsub_messages(&mut stream, sub_state.rx).await?;
+            }
+            // After push loop returns (client disconnected or channel closed),
+            // continue the outer loop
         }
     }
 }

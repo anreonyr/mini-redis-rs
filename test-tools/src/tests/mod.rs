@@ -1,6 +1,7 @@
 pub mod connection;
 pub mod key;
 pub mod persistence;
+pub mod pubsub;
 pub mod string;
 pub mod expiry;
 pub mod list;

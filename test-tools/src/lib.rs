@@ -735,6 +735,11 @@ tree_tests! {
             "UNWATCH"               => tests::transaction::test_unwatch,
         ],
     ],
+    ("PubSub", "PubSub") [
+        ("PUBLISH", "New") [
+            "PUBLISH no subscribers" => tests::pubsub::test_publish_no_subscribers,
+        ],
+    ],
 }
 
 pub struct BenchmarkDef {
