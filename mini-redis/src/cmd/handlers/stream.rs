@@ -482,6 +482,184 @@ pub fn handle_xack(key: &str, group: &str, ids: &[String]) -> RespType {
     })
 }
 
+pub fn handle_xpending(
+    key: &str,
+    group: &str,
+    start: &str,
+    end: &str,
+    count: u64,
+    consumer: Option<&str>,
+) -> RespType {
+    with_db(|db| {
+        let entry = match db.get(key) {
+            Some(e) => e,
+            None => return RespType::Array(Some(vec![])),
+        };
+        let stream = match &entry.value {
+            Value::Stream(s) => s,
+            _ => return RespType::Array(Some(vec![])),
+        };
+        let cg = match stream.groups.get(group) {
+            Some(g) => g,
+            _ => return RespType::Array(Some(vec![])),
+        };
+
+        let start_id = if start == "-" { (i64::MIN, 0u64) } else {
+            parse_stream_id(start).unwrap_or((i64::MIN, 0))
+        };
+        let end_id = if end == "+" { (i64::MAX, u64::MAX) } else {
+            parse_stream_id(end).unwrap_or((i64::MAX, u64::MAX))
+        };
+
+        let mut all_pending: Vec<&crate::db::PendingEntry> = Vec::new();
+        for (con_name, entries) in &cg.pending {
+            if let Some(consumer_name) = consumer {
+                if con_name.as_str() != consumer_name {
+                    continue;
+                }
+            }
+            for pe in entries {
+                if let Some((ts, seq)) = parse_stream_id(&pe.id) {
+                    if (ts, seq) >= start_id && (ts, seq) <= end_id {
+                        all_pending.push(pe);
+                    }
+                }
+            }
+        }
+        all_pending.sort_by_key(|pe| pe.id.clone());
+        all_pending.truncate(count as usize);
+
+        let result: Vec<RespType> = all_pending.iter().map(|pe| {
+            RespType::Array(Some(vec![
+                RespType::BulkString(Some(bytes::Bytes::copy_from_slice(pe.id.as_bytes()))),
+                RespType::BulkString(Some(bytes::Bytes::copy_from_slice(pe.consumer_name.as_bytes()))),
+                RespType::Integer(pe.delivery_count as i64),
+            ]))
+        }).collect();
+
+        RespType::Array(Some(result))
+    })
+}
+
+pub fn handle_xclaim(
+    key: &str,
+    group: &str,
+    consumer: &str,
+    _min_idle: u64,
+    ids: &[String],
+) -> RespType {
+    with_db(|db| {
+        let entry = match db.get_mut(key) {
+            Some(e) => e,
+            None => return RespType::Array(Some(vec![])),
+        };
+        let stream = match &mut entry.value {
+            Value::Stream(s) => s,
+            _ => return RespType::Array(Some(vec![])),
+        };
+        let cg = match stream.groups.get_mut(group) {
+            Some(g) => g,
+            _ => return RespType::Array(Some(vec![])),
+        };
+
+        let mut claimed: Vec<RespType> = Vec::new();
+        for id in ids {
+            // Find the entry in the stream
+            let stream_entry = match stream.entries.iter().find(|e| e.id == *id) {
+                Some(e) => e.clone(),
+                None => continue,
+            };
+
+            // Remove from old consumer's pending list
+            for pending_list in cg.pending.values_mut() {
+                pending_list.retain(|pe| pe.id != *id);
+            }
+
+            // Add to new consumer's pending list
+            cg.pending
+                .entry(consumer.to_string())
+                .or_default()
+                .push(crate::db::PendingEntry {
+                    id: id.clone(),
+                    consumer_name: consumer.to_string(),
+                    delivery_count: 1,
+                });
+
+            // Ensure consumer exists
+            cg.consumers.entry(consumer.to_string()).or_insert_with(|| {
+                crate::db::ConsumerInfo { name: consumer.to_string(), pending_count: 0 }
+            });
+
+            claimed.push(make_stream_entry(stream_entry.id, stream_entry.fields));
+        }
+
+        RespType::Array(Some(claimed))
+    })
+}
+
+pub fn handle_xinfo(sub: &str, key: &str, group: Option<&str>) -> RespType {
+    with_db(|db| {
+        let entry = match db.get(key) {
+            Some(e) => e,
+            None => return RespType::Error("ERR no such stream key".to_string()),
+        };
+        let stream = match &entry.value {
+            Value::Stream(s) => s,
+            _ => return RespType::Error("ERR no such stream key".to_string()),
+        };
+
+        match sub.to_uppercase().as_str() {
+            "STREAM" => {
+                let mut info = Vec::new();
+                info.push(RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"length"))));
+                info.push(RespType::Integer(stream.entries.len() as i64));
+                info.push(RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"groups"))));
+                info.push(RespType::Integer(stream.groups.len() as i64));
+                RespType::Array(Some(info))
+            }
+            "GROUPS" => {
+                let mut groups_info: Vec<RespType> = Vec::new();
+                for cg in stream.groups.values() {
+                    let total_pending: usize = cg.pending.values().map(|v| v.len()).sum();
+                    groups_info.push(RespType::Array(Some(vec![
+                        RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"name"))),
+                        RespType::BulkString(Some(bytes::Bytes::copy_from_slice(cg.name.as_bytes()))),
+                        RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"consumers"))),
+                        RespType::Integer(cg.consumers.len() as i64),
+                        RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"pending"))),
+                        RespType::Integer(total_pending as i64),
+                        RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"last-delivered-id"))),
+                        RespType::BulkString(Some(bytes::Bytes::copy_from_slice(cg.last_delivered_id.as_bytes()))),
+                    ])));
+                }
+                RespType::Array(Some(groups_info))
+            }
+            "CONSUMERS" => {
+                let group_name = match group {
+                    Some(g) => g,
+                    None => return RespType::Error("ERR wrong number of arguments".to_string()),
+                };
+                let cg = match stream.groups.get(group_name) {
+                    Some(g) => g,
+                    None => return RespType::Error("ERR no such consumer group".to_string()),
+                };
+                let mut cons_info: Vec<RespType> = Vec::new();
+                for con in cg.consumers.values() {
+                    let pending = cg.pending.get(&con.name).map(|v| v.len() as i64).unwrap_or(0);
+                    cons_info.push(RespType::Array(Some(vec![
+                        RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"name"))),
+                        RespType::BulkString(Some(bytes::Bytes::copy_from_slice(con.name.as_bytes()))),
+                        RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"pending"))),
+                        RespType::Integer(pending),
+                    ])));
+                }
+                RespType::Array(Some(cons_info))
+            }
+            _ => RespType::Error("ERR unknown subcommand".to_string()),
+        }
+    })
+}
+
 fn wrong_type() -> RespType {
     resp::RespType::Error(
         "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),

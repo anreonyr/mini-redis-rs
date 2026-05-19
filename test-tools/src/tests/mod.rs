@@ -10,6 +10,7 @@ pub mod wrongtype;
 pub mod command;
 pub mod server;
 pub mod stream;
+pub mod stream_adv;
 pub mod transaction;
 pub mod hash;
 pub mod set;

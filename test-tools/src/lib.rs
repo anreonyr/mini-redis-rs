@@ -542,6 +542,24 @@ tree_tests! {
             "WRONGTYPE XADD on string" => tests::stream::test_wrongtype_xadd_on_string,
         ],
     ],
+    ("Stream-Adv", "Stream Advanced") [
+        ("XGROUP", "New") [
+            "XGROUP CREATE"       => tests::stream_adv::test_xgroup_create,
+            "XGROUP DESTROY"      => tests::stream_adv::test_xgroup_destroy,
+        ],
+        ("XREADGROUP", "New") [
+            "XREADGROUP basic"    => tests::stream_adv::test_xreadgroup_basic,
+        ],
+        ("XACK", "New") [
+            "XACK basic"          => tests::stream_adv::test_xack_basic,
+        ],
+        ("XPENDING", "New") [
+            "XPENDING basic"      => tests::stream_adv::test_xpending_basic,
+        ],
+        ("XINFO", "New") [
+            "XINFO STREAM"        => tests::stream_adv::test_xinfo_stream,
+        ],
+    ],
     ("Hash", "Hash") [
         ("HSET", "New") [
             "HSET new key"          => tests::hash::test_hset_new_key,
