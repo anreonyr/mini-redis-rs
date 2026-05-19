@@ -3,6 +3,7 @@ pub mod config;
 pub mod db;
 pub mod inline;
 pub mod persist;
+pub mod pubsub;
 pub mod registry;
 pub mod resp;
 pub mod waiters;
