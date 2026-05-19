@@ -1,10 +1,10 @@
-use crate::db::{with_db, Value};
-use crate::resp::RespType;
+use crate::storage::db::{with_db, Value};
+use crate::protocol::resp::RespType;
 
 pub fn handle_sadd(key: &str, members: &[String]) -> RespType {
     with_db(|db| {
         let entry = db.entry(key.to_string()).or_insert_with(|| {
-            crate::db::Entry::new(Value::Set(std::collections::HashSet::new()), None)
+            crate::storage::db::Entry::new(Value::Set(std::collections::HashSet::new()), None)
         });
         match &mut entry.value {
             Value::Set(set) => {
@@ -14,7 +14,7 @@ pub fn handle_sadd(key: &str, members: &[String]) -> RespType {
                         new_count += 1;
                     }
                 }
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 RespType::Integer(new_count)
             }
             _ => wrong_type(),
@@ -61,7 +61,7 @@ pub fn handle_srem(key: &str, members: &[String]) -> RespType {
                         removed += 1;
                     }
                 }
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 if set.is_empty() {
                     db.remove(key);
                 }
@@ -105,7 +105,7 @@ pub fn handle_spop(key: &str, count: Option<usize>) -> RespType {
                         None => break,
                     }
                 }
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 if set.is_empty() {
                     db.remove(key);
                 }
@@ -275,7 +275,7 @@ pub fn handle_smove(source: &str, destination: &str, member: &str) -> RespType {
                     if set.remove(&mb) {
                         removed = true;
                         source_empty = set.is_empty();
-                        entry.version = crate::db::bump_version();
+                        entry.version = crate::storage::db::bump_version();
                     }
                 }
                 _ => return wrong_type(),
@@ -284,18 +284,18 @@ pub fn handle_smove(source: &str, destination: &str, member: &str) -> RespType {
         }
         if removed && source_empty {
             db.remove(source);
-            crate::db::bump_version();
+            crate::storage::db::bump_version();
         }
         if !removed {
             return RespType::Integer(0);
         }
         let dest_entry = db.entry(destination.to_string()).or_insert_with(|| {
-            crate::db::Entry::new(Value::Set(std::collections::HashSet::new()), None)
+            crate::storage::db::Entry::new(Value::Set(std::collections::HashSet::new()), None)
         });
         match &mut dest_entry.value {
             Value::Set(set) => {
                 set.insert(mb);
-                dest_entry.version = crate::db::bump_version();
+                dest_entry.version = crate::storage::db::bump_version();
                 RespType::Integer(1)
             }
             _ => wrong_type(),

@@ -1,9 +1,9 @@
 use bytes::Bytes;
 use tokio::time::Instant;
 
-use crate::db::{bump_version, Entry, Value, with_db};
-use crate::resp;
-use crate::resp::RespType;
+use crate::storage::db::{bump_version, Entry, Value, with_db};
+use crate::protocol::resp;
+use crate::protocol::resp::RespType;
 use std::time::Duration;
 
 pub fn handle_set(key: &str, value: &str, expiry: Option<Duration>) -> RespType {

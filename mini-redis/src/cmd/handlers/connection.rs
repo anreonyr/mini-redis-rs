@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use bytes::Bytes;
 
 use crate::cmd::auth::{ConnectionState, TransactionState};
-use crate::config;
-use crate::db;
-use crate::db::DB_INDEX;
-use crate::pubsub;
-use crate::registry;
-use crate::resp::RespType;
+use crate::server::config;
+use crate::storage::db;
+use crate::storage::db::DB_INDEX;
+use crate::server::pubsub;
+use crate::server::registry;
+use crate::protocol::resp::RespType;
 use tokio::sync::mpsc::unbounded_channel;
 
 pub fn handle_ping() -> RespType {
@@ -85,8 +85,8 @@ pub fn handle_command(subcommand: Option<String>, name: Option<String>) -> RespT
 }
 
 pub fn handle_flushdb() -> RespType {
-    crate::db::flushdb();
-    crate::db::bump_version();
+    crate::storage::db::flushdb();
+    crate::storage::db::bump_version();
     RespType::SimpleString("OK".to_string())
 }
 
@@ -163,7 +163,7 @@ pub fn handle_config_set(parameter: &str, value: &str) -> RespType {
 
 pub async fn handle_save() -> RespType {
     let path = config::with_config(|cfg| cfg.db_path());
-    match crate::persist::save(&path).await {
+    match crate::storage::persist::save(&path).await {
         Ok(()) => RespType::SimpleString("OK".to_string()),
         Err(e) => RespType::Error(format!("ERR {}", e)),
     }
@@ -174,7 +174,7 @@ pub fn handle_bgsave() -> RespType {
     // Spawn a background task that uses the async save
     tokio::spawn(async move {
         DB_INDEX.scope(std::cell::Cell::new(0), async {
-            match crate::persist::save(&path).await {
+            match crate::storage::persist::save(&path).await {
                 Ok(()) => println!("BGSAVE completed to {}", path),
                 Err(e) => eprintln!("BGSAVE error: {}", e),
             }
@@ -185,10 +185,11 @@ pub fn handle_bgsave() -> RespType {
 
 pub async fn handle_shutdown() -> RespType {
     let path = config::with_config(|cfg| cfg.db_path());
-    if let Err(e) = crate::persist::save(&path).await {
+    if let Err(e) = crate::storage::persist::save(&path).await {
         return RespType::Error(format!("ERR {}", e));
     }
-    std::process::exit(0);
+    crate::server::shutdown::request();
+    RespType::SimpleString("OK".to_string())
 }
 
 // Transaction handlers

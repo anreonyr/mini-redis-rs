@@ -26,7 +26,7 @@ pub async fn test_smembers(client: &mut RedisClient) -> Result<(), String> {
     let _ = client.cmd(&["SADD", "test_rs:s4", "a", "b", "c"]).await?;
     let r = client.cmd(&["SMEMBERS", "test_rs:s4"]).await?;
     match &r {
-        mini_redis::resp::RespType::Array(Some(items)) => {
+        mini_redis::protocol::resp::RespType::Array(Some(items)) => {
             if items.len() == 3 {
                 Ok(())
             } else {
@@ -108,7 +108,7 @@ pub async fn test_spop_single(client: &mut RedisClient) -> Result<(), String> {
 pub async fn test_spop_count(client: &mut RedisClient) -> Result<(), String> {
     client.cmd(&["SADD", "test_rs:spo2", "a", "b", "c"]).await?;
     let r = client.cmd(&["SPOP", "test_rs:spo2", "2"]).await?;
-    assert!(matches!(&r, mini_redis::resp::RespType::Array(Some(v)) if v.len() == 2), "SPOP count 2");
+    assert!(matches!(&r, mini_redis::protocol::resp::RespType::Array(Some(v)) if v.len() == 2), "SPOP count 2");
     Ok(())
 }
 
@@ -129,7 +129,7 @@ pub async fn test_sunion(client: &mut RedisClient) -> Result<(), String> {
     client.cmd(&["SADD", "test_rs:su1", "a", "b"]).await?;
     client.cmd(&["SADD", "test_rs:su2", "b", "c"]).await?;
     let r = client.cmd(&["SUNION", "test_rs:su1", "test_rs:su2"]).await?;
-    assert!(matches!(&r, mini_redis::resp::RespType::Array(Some(v)) if v.len() == 3), "SUNION");
+    assert!(matches!(&r, mini_redis::protocol::resp::RespType::Array(Some(v)) if v.len() == 3), "SUNION");
     Ok(())
 }
 
@@ -137,7 +137,7 @@ pub async fn test_sinter(client: &mut RedisClient) -> Result<(), String> {
     client.cmd(&["SADD", "test_rs:si1", "a", "b", "c"]).await?;
     client.cmd(&["SADD", "test_rs:si2", "b", "c", "d"]).await?;
     let r = client.cmd(&["SINTER", "test_rs:si1", "test_rs:si2"]).await?;
-    assert!(matches!(&r, mini_redis::resp::RespType::Array(Some(v)) if v.len() == 2), "SINTER");
+    assert!(matches!(&r, mini_redis::protocol::resp::RespType::Array(Some(v)) if v.len() == 2), "SINTER");
     Ok(())
 }
 
@@ -145,7 +145,7 @@ pub async fn test_sdiff(client: &mut RedisClient) -> Result<(), String> {
     client.cmd(&["SADD", "test_rs:sd1", "a", "b", "c"]).await?;
     client.cmd(&["SADD", "test_rs:sd2", "b"]).await?;
     let r = client.cmd(&["SDIFF", "test_rs:sd1", "test_rs:sd2"]).await?;
-    assert!(matches!(&r, mini_redis::resp::RespType::Array(Some(v)) if v.len() == 2), "SDIFF");
+    assert!(matches!(&r, mini_redis::protocol::resp::RespType::Array(Some(v)) if v.len() == 2), "SDIFF");
     Ok(())
 }
 

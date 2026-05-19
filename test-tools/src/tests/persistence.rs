@@ -79,8 +79,8 @@ pub async fn test_config_set_dir(client: &mut RedisClient) -> Result<(), String>
     // Save original value
     let resp = client.cmd(&["CONFIG", "GET", "dir"]).await?;
     let original = match &resp {
-        mini_redis::resp::RespType::Array(Some(items)) if items.len() == 2 => {
-            if let mini_redis::resp::RespType::BulkString(Some(bytes)) = &items[1] {
+        mini_redis::protocol::resp::RespType::Array(Some(items)) if items.len() == 2 => {
+            if let mini_redis::protocol::resp::RespType::BulkString(Some(bytes)) = &items[1] {
                 String::from_utf8_lossy(bytes).to_string()
             } else {
                 return Err("CONFIG GET dir: second element is not BulkString".to_string());

@@ -28,7 +28,8 @@
       "PowerShell(cargo run *)",
       "PowerShell(Stop-Process *)",
       "Bash(Select-String -Pattern \"Transaction\" -Context 2)",
-      "Bash(curl -s *)"
+      "Bash(curl -s *)",
+      "Bash(awk '{print $1, $2}')"
     ]
   }
 }

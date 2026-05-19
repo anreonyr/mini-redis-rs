@@ -12,20 +12,12 @@ tokio::task_local! {
 
 pub const NUM_DBS: usize = 16;
 
-static DBS: LazyLock<Mutex<Vec<HashMap<String, Entry>>>> = LazyLock::new(|| {
-    let mut vec = Vec::with_capacity(NUM_DBS);
-    for _ in 0..NUM_DBS {
-        vec.push(HashMap::new());
-    }
-    Mutex::new(vec)
+/// Per-database Mutex — each DB has its own lock so operations on
+/// different databases never contend.
+static DBS: LazyLock<Vec<Mutex<HashMap<String, Entry>>>> = LazyLock::new(|| {
+    (0..NUM_DBS).map(|_| Mutex::new(HashMap::new())).collect()
 });
 static VERSION_COUNTER: AtomicU64 = AtomicU64::new(1);
-
-/// Lock the global DBS mutex, recovering from poison if a previous
-/// handler panicked (e.g. hyperloglog assertion failure).
-fn lock_dbs() -> std::sync::MutexGuard<'static, Vec<HashMap<String, Entry>>> {
-    DBS.lock().unwrap_or_else(|e| e.into_inner())
-}
 
 /// Set the current database index for this connection's task.
 /// No longer a global atomic — uses `tokio::task_local!` so each
@@ -113,22 +105,22 @@ where
     F: FnOnce(&mut HashMap<String, Entry>) -> R,
 {
     let idx = DB_INDEX.with(|cell| cell.get());
-    let mut dbs = lock_dbs();
-    f(&mut dbs[idx])
+    let mut db = DBS[idx].lock().unwrap_or_else(|e| e.into_inner());
+    f(&mut *db)
 }
 
 pub fn with_db_at<F, R>(index: usize, f: F) -> R
 where
     F: FnOnce(&mut HashMap<String, Entry>) -> R,
 {
-    let mut dbs = lock_dbs();
-    let idx = index.min(dbs.len() - 1);
-    f(&mut dbs[idx])
+    let idx = index.min(NUM_DBS - 1);
+    let mut db = DBS[idx].lock().unwrap_or_else(|e| e.into_inner());
+    f(&mut *db)
 }
 
 pub fn flushdb() {
-    let mut dbs = lock_dbs();
-    for db in dbs.iter_mut() {
+    for db in DBS.iter() {
+        let mut db = db.lock().unwrap_or_else(|e| e.into_inner());
         db.clear();
     }
 }
@@ -142,8 +134,8 @@ pub fn bump_version() -> u64 {
 /// Locks the DB internally. Do NOT call from inside `with_db()` (deadlock risk).
 pub fn key_version(key: &str) -> Option<u64> {
     let idx = DB_INDEX.with(|cell| cell.get());
-    let dbs = DBS.lock().unwrap();
-    dbs[idx].get(key).map(|e| e.version)
+    let db = DBS[idx].lock().unwrap_or_else(|e| e.into_inner());
+    db.get(key).map(|e| e.version)
 }
 
 /// Get a key's version from an already-locked DB reference (safe inside `with_db`).

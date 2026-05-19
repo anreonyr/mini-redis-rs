@@ -1,4 +1,4 @@
-use mini_redis::resp::{Decoder, DecodeError, RespType};
+use mini_redis::protocol::resp::{Decoder, DecodeError, RespType};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -110,7 +110,7 @@ impl BenchResult {
 // ── RESP helpers ───────────────────────────────────────────────────────
 
 pub mod helpers {
-    use mini_redis::resp::RespType;
+    use mini_redis::protocol::resp::RespType;
 
     pub fn simple_str(expected: &str) -> RespType {
         RespType::SimpleString(expected.to_string())

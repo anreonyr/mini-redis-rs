@@ -1,12 +1,12 @@
-use crate::db::{with_db, Value};
-use crate::resp::RespType;
+use crate::storage::db::{with_db, Value};
+use crate::protocol::resp::RespType;
 use bytes::Bytes;
 use std::collections::HashMap;
 
 pub fn handle_zadd(key: &str, members: &[(i64, String)]) -> RespType {
     with_db(|db| {
         let entry = db.entry(key.to_string()).or_insert_with(|| {
-            crate::db::Entry::new(
+            crate::storage::db::Entry::new(
                 Value::ZSet(std::collections::BTreeSet::new()),
                 None,
             )
@@ -29,7 +29,7 @@ pub fn handle_zadd(key: &str, members: &[(i64, String)]) -> RespType {
                         new_count += 1;
                     }
                 }
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 RespType::Integer(new_count)
             }
             _ => wrong_type(),
@@ -127,7 +127,7 @@ pub fn handle_zrem(key: &str, members: &[String]) -> RespType {
                         removed += 1;
                     }
                 }
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 if set.is_empty() {
                     db.remove(key);
                 }
@@ -239,7 +239,7 @@ pub fn handle_zrangebyscore(
 pub fn handle_zincrby(key: &str, incr: i64, member: &str) -> RespType {
     with_db(|db| {
         let entry = db.entry(key.to_string()).or_insert_with(|| {
-            crate::db::Entry::new(Value::ZSet(std::collections::BTreeSet::new()), None)
+            crate::storage::db::Entry::new(Value::ZSet(std::collections::BTreeSet::new()), None)
         });
         match &mut entry.value {
             Value::ZSet(set) => {
@@ -252,7 +252,7 @@ pub fn handle_zincrby(key: &str, incr: i64, member: &str) -> RespType {
                     incr
                 };
                 set.insert((new_score, mb));
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 RespType::BulkString(Some(bytes::Bytes::copy_from_slice(
                     new_score.to_string().as_bytes(),
                 )))
@@ -338,7 +338,7 @@ pub fn handle_zremrangebyrank(key: &str, start: i64, stop: i64) -> RespType {
                 for t in &to_remove {
                     set.remove(t);
                 }
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 if set.is_empty() {
                     db.remove(key);
                 }
@@ -369,7 +369,7 @@ pub fn handle_zremrangebyscore(key: &str, min: &str, max: &str) -> RespType {
                 for t in &to_remove {
                     set.remove(t);
                 }
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 if set.is_empty() {
                     db.remove(key);
                 }
@@ -442,7 +442,7 @@ fn wrong_type() -> RespType {
 
 /// Aggregate scores across keys by SUM/MIN/MAX with optional weights.
 fn zset_aggregate(
-    db: &HashMap<String, crate::db::Entry>,
+    db: &HashMap<String, crate::storage::db::Entry>,
     keys: &[String],
     weights: &[f64],
     aggregate: &str,
@@ -554,10 +554,10 @@ pub fn handle_zinterstore(
 
         // Store result in destination key
         let entry = db.entry(dest.to_string()).or_insert_with(|| {
-            crate::db::Entry::new(Value::ZSet(std::collections::BTreeSet::new()), None)
+            crate::storage::db::Entry::new(Value::ZSet(std::collections::BTreeSet::new()), None)
         });
         entry.value = Value::ZSet(result_zset.clone());
-        entry.version = crate::db::bump_version();
+        entry.version = crate::storage::db::bump_version();
         RespType::Integer(result_zset.len() as i64)
     })
 }
@@ -576,10 +576,10 @@ pub fn handle_zunionstore(
             result_zset.insert((score, member));
         }
         let entry = db.entry(dest.to_string()).or_insert_with(|| {
-            crate::db::Entry::new(Value::ZSet(std::collections::BTreeSet::new()), None)
+            crate::storage::db::Entry::new(Value::ZSet(std::collections::BTreeSet::new()), None)
         });
         entry.value = Value::ZSet(result_zset.clone());
-        entry.version = crate::db::bump_version();
+        entry.version = crate::storage::db::bump_version();
         RespType::Integer(result_zset.len() as i64)
     })
 }
@@ -749,10 +749,10 @@ pub fn handle_zdiffstore(dest: &str, keys: &[String]) -> RespType {
     with_db(|db| {
         if keys.is_empty() || !db.contains_key(&keys[0]) {
             let entry = db.entry(dest.to_string()).or_insert_with(|| {
-                crate::db::Entry::new(Value::ZSet(std::collections::BTreeSet::new()), None)
+                crate::storage::db::Entry::new(Value::ZSet(std::collections::BTreeSet::new()), None)
             });
             entry.value = Value::ZSet(std::collections::BTreeSet::new());
-            entry.version = crate::db::bump_version();
+            entry.version = crate::storage::db::bump_version();
             return RespType::Integer(0);
         }
         let first_set = match &db[&keys[0]].value {
@@ -779,10 +779,10 @@ pub fn handle_zdiffstore(dest: &str, keys: &[String]) -> RespType {
         }
         let count = result_zset.len();
         let entry = db.entry(dest.to_string()).or_insert_with(|| {
-            crate::db::Entry::new(Value::ZSet(std::collections::BTreeSet::new()), None)
+            crate::storage::db::Entry::new(Value::ZSet(std::collections::BTreeSet::new()), None)
         });
         entry.value = Value::ZSet(result_zset);
-        entry.version = crate::db::bump_version();
+        entry.version = crate::storage::db::bump_version();
         RespType::Integer(count as i64)
     })
 }

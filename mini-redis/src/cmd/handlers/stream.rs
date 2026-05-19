@@ -1,9 +1,9 @@
 use bytes::Bytes;
 
 use crate::cmd::types::XGroupSub;
-use crate::db::{ConsumerGroup, Entry, StreamData, StreamEntry, Value, with_db};
-use crate::resp;
-use crate::resp::RespType;
+use crate::storage::db::{ConsumerGroup, Entry, StreamData, StreamEntry, Value, with_db};
+use crate::protocol::resp;
+use crate::protocol::resp::RespType;
 use std::collections::HashMap;
 
 // ── Stream ID helpers ─────────────────────────────────────────────────
@@ -100,7 +100,7 @@ pub fn handle_xadd(key: &str, id_spec: &str, field_args: &[String]) -> RespType 
                     fields,
                 });
 
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 RespType::BulkString(Some(Bytes::from(final_id)))
             }
             _ => wrong_type(),
@@ -197,7 +197,7 @@ pub fn handle_xtrim(key: &str, _strategy: &str, threshold: u64, _exact: bool) ->
                 if before > threshold as usize {
                     let to_remove = before - threshold as usize;
                     stream.entries.drain(..to_remove);
-                    entry.version = crate::db::bump_version();
+                    entry.version = crate::storage::db::bump_version();
                     if stream.entries.is_empty() {
                         stream.last_timestamp_ms = 0;
                         stream.last_seq = 0;
@@ -220,7 +220,7 @@ pub fn handle_xdel(key: &str, ids: &[String]) -> RespType {
                 let before = stream.entries.len();
                 stream.entries.retain(|e| !ids.contains(&e.id));
                 let removed = before - stream.entries.len();
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 if stream.entries.is_empty() {
                     db.remove(key);
                 }
@@ -321,7 +321,7 @@ pub fn handle_xgroup(sub: XGroupSub, key: &str) -> RespType {
                 if cg.consumers.contains_key(&consumer) {
                     return RespType::Integer(0);
                 }
-                cg.consumers.insert(consumer.clone(), crate::db::ConsumerInfo {
+                cg.consumers.insert(consumer.clone(), crate::storage::db::ConsumerInfo {
                     name: consumer,
                     pending_count: 0,
                 });
@@ -395,13 +395,13 @@ pub fn handle_xreadgroup(
                     cg.pending
                         .entry(consumer.to_string())
                         .or_default()
-                        .push(crate::db::PendingEntry {
+                        .push(crate::storage::db::PendingEntry {
                             id: id.clone(),
                             consumer_name: consumer.to_string(),
                             delivery_count: 1,
                         });
                     let con = cg.consumers.entry(consumer.to_string()).or_insert_with(|| {
-                        crate::db::ConsumerInfo { name: consumer.to_string(), pending_count: 0 }
+                        crate::storage::db::ConsumerInfo { name: consumer.to_string(), pending_count: 0 }
                     });
                     con.pending_count += 1;
                 }
@@ -511,7 +511,7 @@ pub fn handle_xpending(
             parse_stream_id(end).unwrap_or((i64::MAX, u64::MAX))
         };
 
-        let mut all_pending: Vec<&crate::db::PendingEntry> = Vec::new();
+        let mut all_pending: Vec<&crate::storage::db::PendingEntry> = Vec::new();
         for (con_name, entries) in &cg.pending {
             if let Some(consumer_name) = consumer {
                 if con_name.as_str() != consumer_name {
@@ -579,7 +579,7 @@ pub fn handle_xclaim(
             cg.pending
                 .entry(consumer.to_string())
                 .or_default()
-                .push(crate::db::PendingEntry {
+                .push(crate::storage::db::PendingEntry {
                     id: id.clone(),
                     consumer_name: consumer.to_string(),
                     delivery_count: 1,
@@ -587,7 +587,7 @@ pub fn handle_xclaim(
 
             // Ensure consumer exists
             cg.consumers.entry(consumer.to_string()).or_insert_with(|| {
-                crate::db::ConsumerInfo { name: consumer.to_string(), pending_count: 0 }
+                crate::storage::db::ConsumerInfo { name: consumer.to_string(), pending_count: 0 }
             });
 
             claimed.push(make_stream_entry(stream_entry.id, stream_entry.fields));

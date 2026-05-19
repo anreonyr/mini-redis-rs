@@ -1,4 +1,4 @@
-use mini_redis::resp;
+use mini_redis::protocol::resp;
 
 #[test]
 fn test_simple_string() {

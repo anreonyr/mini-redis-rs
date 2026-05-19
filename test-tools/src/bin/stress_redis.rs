@@ -1,5 +1,5 @@
 use test_tools::{BENCHMARKS, run_bench, RedisClient};
-use mini_redis::resp::RespType;
+use mini_redis::protocol::resp::RespType;
 
 const BOLD: &str = "\x1b[1m";
 const CYAN: &str = "\x1b[36m";

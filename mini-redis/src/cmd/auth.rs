@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use crate::cmd::types::ParsedCmd;
-use crate::config;
-use crate::pubsub::Message;
-use crate::resp::RespType;
+use crate::server::config;
+use crate::server::pubsub::Message;
+use crate::protocol::resp::RespType;
 use tokio::sync::mpsc::UnboundedReceiver;
 
 #[derive(Clone)]

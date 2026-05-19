@@ -1,5 +1,5 @@
 use crate::RedisClient;
-use mini_redis::resp::RespType;
+use mini_redis::protocol::resp::RespType;
 
 pub async fn test_scan_empty(client: &mut RedisClient) -> Result<(), String> {
     let r = client.cmd(&["SCAN", "0"]).await?;

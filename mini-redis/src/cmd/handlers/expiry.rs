@@ -1,8 +1,8 @@
 use std::time::Duration;
 use tokio::time::Instant;
 
-use crate::db::with_db;
-use crate::resp::RespType;
+use crate::storage::db::with_db;
+use crate::protocol::resp::RespType;
 
 pub fn handle_expire(key: &str, seconds: u64) -> RespType {
     with_db(|db| match db.get_mut(key) {
@@ -11,7 +11,7 @@ pub fn handle_expire(key: &str, seconds: u64) -> RespType {
                 RespType::Integer(0)
             } else {
                 entry.expiry = Some(Instant::now() + Duration::from_secs(seconds));
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 RespType::Integer(1)
             }
         }
@@ -46,7 +46,7 @@ pub fn handle_persist(key: &str) -> RespType {
                 RespType::Integer(0)
             } else if entry.expiry.is_some() {
                 entry.expiry = None;
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 RespType::Integer(1)
             } else {
                 RespType::Integer(0)

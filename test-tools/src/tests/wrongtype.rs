@@ -1,5 +1,5 @@
 use crate::RedisClient;
-use mini_redis::resp::RespType;
+use mini_redis::protocol::resp::RespType;
 
 pub async fn test_wrongtype_get_on_list(client: &mut RedisClient) -> Result<(), String> {
     let _ = client.cmd(&["RPUSH", "test_rs:wt_list", "a"]).await?;

@@ -5,10 +5,10 @@ use std::time::Duration;
 use bytes::Bytes;
 use tokio::sync::Notify;
 
-use crate::waiters;
-use crate::db::{Entry, Value, with_db};
-use crate::resp;
-use crate::resp::RespType;
+use crate::server::waiters;
+use crate::storage::db::{Entry, Value, with_db};
+use crate::protocol::resp;
+use crate::protocol::resp::RespType;
 
 pub fn handle_rpush(key: &str, values: &[String]) -> RespType {
     let values: VecDeque<Bytes> = values.iter().map(|v| Bytes::from(v.clone())).collect();
@@ -16,7 +16,7 @@ pub fn handle_rpush(key: &str, values: &[String]) -> RespType {
         Some(entry) => {
             if let Value::List(ref mut list) = entry.value {
                 list.extend(values);
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 RespType::Integer(list.len() as i64)
             } else {
                 wrong_type()
@@ -40,7 +40,7 @@ pub fn handle_lpush(key: &str, values: &[String]) -> RespType {
                 for v in values {
                     list.push_front(v);
                 }
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 RespType::Integer(list.len() as i64)
             } else {
                 wrong_type()
@@ -120,7 +120,7 @@ pub fn handle_lpop(key: &str, count: Option<usize>) -> RespType {
                         None => break,
                     }
                 }
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 if list.is_empty() {
                     db.remove(key);
                 }
@@ -154,7 +154,7 @@ pub fn try_blpop(keys: &[String]) -> Option<RespType> {
                 Some(entry) => match &mut entry.value {
                     Value::List(list) => {
                         if let Some(val) = list.pop_front() {
-                            entry.version = crate::db::bump_version();
+                            entry.version = crate::storage::db::bump_version();
                             if list.is_empty() {
                                 db.remove(key);
                             }
@@ -224,7 +224,7 @@ pub fn handle_rpop(key: &str, count: Option<usize>) -> RespType {
                         None => break,
                     }
                 }
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 if list.is_empty() {
                     db.remove(key);
                 }
@@ -271,7 +271,7 @@ pub fn handle_lrem(key: &str, count: i64, value: &str) -> RespType {
             if let Value::List(ref mut list) = entry.value {
                 let target = Bytes::from(value.to_string());
                 let old_len = list.len();
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 if count > 0 {
                     let mut removed = 0i64;
                     let mut i = 0;
@@ -317,7 +317,7 @@ pub fn handle_lrem(key: &str, count: i64, value: &str) -> RespType {
     })
 }
 
-fn remove_key_if_empty(db: &mut std::collections::HashMap<String, crate::db::Entry>, key: &str) {
+fn remove_key_if_empty(db: &mut std::collections::HashMap<String, crate::storage::db::Entry>, key: &str) {
     if db.get(key).is_some_and(|e| {
         if let Value::List(l) = &e.value {
             l.is_empty()
@@ -351,7 +351,7 @@ pub fn handle_ltrim(key: &str, start: i64, stop: i64) -> RespType {
                         .collect();
                     *list = kept;
                 }
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 remove_key_if_empty(db, key);
                 RespType::SimpleString("OK".to_string())
             } else {
@@ -367,7 +367,7 @@ pub fn handle_rpoplpush(source: &str, destination: &str) -> RespType {
         Some(entry) => {
             if let Value::List(ref mut list) = entry.value {
                 let popped = list.pop_back();
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 if list.is_empty() {
                     db.remove(source);
                 }
@@ -387,7 +387,7 @@ pub fn handle_rpoplpush(source: &str, destination: &str) -> RespType {
                 match &mut entry.value {
                     Value::List(list) => {
                         list.push_front(v.clone());
-                        entry.version = crate::db::bump_version();
+                        entry.version = crate::storage::db::bump_version();
                     }
                     _ => {}
                 }
@@ -408,7 +408,7 @@ pub fn handle_lset(key: &str, index: i64, value: &str) -> RespType {
                     RespType::Error("ERR index out of range".to_string())
                 } else {
                     list[idx as usize] = Bytes::from(value.to_string());
-                    entry.version = crate::db::bump_version();
+                    entry.version = crate::storage::db::bump_version();
                     RespType::SimpleString("OK".to_string())
                 }
             } else {

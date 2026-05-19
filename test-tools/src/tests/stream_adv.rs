@@ -1,6 +1,6 @@
 use crate::helpers::*;
 use crate::RedisClient;
-use mini_redis::resp::RespType;
+use mini_redis::protocol::resp::RespType;
 
 pub async fn test_xgroup_create(client: &mut RedisClient) -> Result<(), String> {
     let _ = client.cmd(&["DEL", "test_adv:s1"]).await?;

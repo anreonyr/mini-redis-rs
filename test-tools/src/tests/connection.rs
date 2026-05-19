@@ -1,6 +1,6 @@
 use crate::helpers::*;
 use crate::RedisClient;
-use mini_redis::resp::RespType;
+use mini_redis::protocol::resp::RespType;
 
 pub async fn test_ping(client: &mut RedisClient) -> Result<(), String> {
     let r = client.cmd(&["PING"]).await?;

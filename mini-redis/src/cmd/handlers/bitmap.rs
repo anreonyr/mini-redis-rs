@@ -1,7 +1,7 @@
 use bytes::Bytes;
 
-use crate::db::{Entry, Value, with_db};
-use crate::resp::RespType;
+use crate::storage::db::{Entry, Value, with_db};
+use crate::protocol::resp::RespType;
 
 fn wrong_type() -> RespType {
     RespType::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string())
@@ -79,7 +79,7 @@ pub fn handle_setbit(key: &str, offset: u64, value: u8) -> RespType {
                     v[byte_idx] &= !(1 << bit_idx);
                 }
                 *bytes = Bytes::from(v);
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 RespType::Integer(old_bit as i64)
             }
             _ => wrong_type(),
@@ -176,7 +176,7 @@ pub fn handle_bitop(op: &str, dest: &str, keys: &[String]) -> RespType {
         match &mut entry.value {
             Value::String(bytes) => {
                 *bytes = Bytes::from(result);
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 RespType::Integer(max_len as i64)
             }
             _ => wrong_type(),

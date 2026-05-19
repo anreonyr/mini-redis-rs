@@ -1,4 +1,4 @@
-use crate::resp;
+use crate::protocol::resp;
 
 use super::types::{CmdError, ParsedCmd};
 

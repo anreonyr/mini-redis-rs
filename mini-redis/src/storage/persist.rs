@@ -3,13 +3,13 @@ use std::fs;
 
 use tokio::time::Instant;
 
-use crate::db::Entry;
+use crate::storage::db::Entry;
 
 /// Save the entire database to a file at `path`.
 /// Expired keys are skipped during serialization.
 /// Runs blocking IO on a dedicated thread via `spawn_blocking`.
 pub async fn save(path: &str) -> Result<(), String> {
-    let data = crate::db::with_db(|db| {
+    let data = crate::storage::db::with_db(|db| {
         let mut map: HashMap<String, Entry> = HashMap::new();
         let now = Instant::now();
         for (key, entry) in db.iter() {
@@ -44,7 +44,7 @@ pub fn load(path: &str) -> Result<usize, String> {
         bincode::deserialize(&bytes).map_err(|e| format!("deserialize error: {}", e))?;
 
     let count = data.len();
-    crate::db::with_db(|db| {
+    crate::storage::db::with_db(|db| {
         db.clear();
         db.extend(data);
     });

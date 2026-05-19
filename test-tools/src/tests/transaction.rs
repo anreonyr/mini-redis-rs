@@ -10,7 +10,7 @@ pub async fn test_multi_exec_basic(client: &mut RedisClient) -> Result<(), Strin
 
     let resp = client.cmd(&["EXEC"]).await?;
     match &resp {
-        mini_redis::resp::RespType::Array(Some(items)) if items.len() == 1 => {
+        mini_redis::protocol::resp::RespType::Array(Some(items)) if items.len() == 1 => {
             crate::assert_resp!(items[0].clone(), helpers::simple_str("OK"), "EXEC SET result");
         }
         _ => return Err(format!("EXEC: expected Array(1), got {}", resp)),
@@ -42,7 +42,7 @@ pub async fn test_exec_without_multi(client: &mut RedisClient) -> Result<(), Str
     let resp = client.cmd(&["EXEC"]).await?;
     crate::assert_resp!(
         resp,
-        mini_redis::resp::RespType::Error("ERR EXEC without MULTI".to_string()),
+        mini_redis::protocol::resp::RespType::Error("ERR EXEC without MULTI".to_string()),
         "EXEC without MULTI"
     );
     Ok(())
@@ -52,7 +52,7 @@ pub async fn test_discard_without_multi(client: &mut RedisClient) -> Result<(), 
     let resp = client.cmd(&["DISCARD"]).await?;
     crate::assert_resp!(
         resp,
-        mini_redis::resp::RespType::Error("ERR DISCARD without MULTI".to_string()),
+        mini_redis::protocol::resp::RespType::Error("ERR DISCARD without MULTI".to_string()),
         "DISCARD without MULTI"
     );
     Ok(())
@@ -65,7 +65,7 @@ pub async fn test_nested_multi(client: &mut RedisClient) -> Result<(), String> {
     let resp = client.cmd(&["MULTI"]).await?;
     crate::assert_resp!(
         resp,
-        mini_redis::resp::RespType::Error("ERR MULTI calls can not be nested".to_string()),
+        mini_redis::protocol::resp::RespType::Error("ERR MULTI calls can not be nested".to_string()),
         "nested MULTI"
     );
 
@@ -95,7 +95,7 @@ pub async fn test_watch_then_exec(client: &mut RedisClient) -> Result<(), String
     // EXEC — should succeed since key wasn't modified between WATCH and EXEC
     let resp = client.cmd(&["EXEC"]).await?;
     match &resp {
-        mini_redis::resp::RespType::Array(Some(items)) if items.len() == 1 => {
+        mini_redis::protocol::resp::RespType::Array(Some(items)) if items.len() == 1 => {
             crate::assert_resp!(items[0].clone(), helpers::simple_str("OK"), "EXEC SET result");
         }
         _ => return Err(format!("EXEC: expected Array(1), got {}", resp)),
@@ -129,7 +129,7 @@ pub async fn test_unwatch(client: &mut RedisClient) -> Result<(), String> {
     // EXEC should succeed
     let resp = client.cmd(&["EXEC"]).await?;
     match &resp {
-        mini_redis::resp::RespType::Array(Some(items)) if items.len() == 1 => {
+        mini_redis::protocol::resp::RespType::Array(Some(items)) if items.len() == 1 => {
             crate::assert_resp!(items[0].clone(), helpers::simple_str("OK"), "EXEC SET result");
         }
         _ => return Err(format!("EXEC: expected Array(1), got {}", resp)),

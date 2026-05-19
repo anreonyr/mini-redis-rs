@@ -1,4 +1,4 @@
-use mini_redis::inline;
+use mini_redis::protocol::inline;
 
 // --- strip_iac ---
 

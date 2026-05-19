@@ -1,6 +1,6 @@
 use crate::helpers::*;
 use crate::RedisClient;
-use mini_redis::resp::RespType;
+use mini_redis::protocol::resp::RespType;
 
 pub async fn test_getbit_basic(client: &mut RedisClient) -> Result<(), String> {
     let _ = client.cmd(&["SET", "bit:test", "a"]).await?; // 'a' = 0b01100001

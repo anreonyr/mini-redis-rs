@@ -1,8 +1,8 @@
 use bytes::Bytes;
 use tokio::time::Instant;
 
-use crate::db::{with_db, Value};
-use crate::resp::RespType;
+use crate::storage::db::{with_db, Value};
+use crate::protocol::resp::RespType;
 
 pub fn handle_del(keys: &[String]) -> RespType {
     with_db(|db| {
@@ -10,7 +10,7 @@ pub fn handle_del(keys: &[String]) -> RespType {
         for key in keys {
             if db.contains_key(key) {
                 db.remove(key);
-                crate::db::bump_version();
+                crate::storage::db::bump_version();
                 deleted += 1;
             }
         }
@@ -105,7 +105,7 @@ pub fn handle_rename(key: &str, newkey: &str) -> RespType {
     with_db(|db| match db.remove(key) {
         Some(entry) => {
             db.insert(newkey.to_string(), entry);
-            crate::db::bump_version();
+            crate::storage::db::bump_version();
             RespType::SimpleString("OK".to_string())
         }
         None => RespType::Error("ERR no such key".to_string()),
@@ -120,7 +120,7 @@ pub fn handle_renamenx(key: &str, newkey: &str) -> RespType {
         match db.remove(key) {
             Some(entry) => {
                 db.insert(newkey.to_string(), entry);
-                crate::db::bump_version();
+                crate::storage::db::bump_version();
                 RespType::Integer(1)
             }
             None => RespType::Error("ERR no such key".to_string()),

@@ -1,6 +1,6 @@
 use crate::helpers::*;
 use crate::RedisClient;
-use mini_redis::resp::RespType;
+use mini_redis::protocol::resp::RespType;
 
 pub async fn test_zadd_new_key(client: &mut RedisClient) -> Result<(), String> {
     let r = client.cmd(&["ZADD", "test_rs:z", "1", "a", "2", "b"]).await?;

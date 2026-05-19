@@ -1,5 +1,5 @@
-use mini_redis::{cmd, config, db, inline, persist, registry, resp};
-use mini_redis::db::DB_INDEX;
+use mini_redis::{cmd, server::{config, registry, shutdown}, storage::{db, persist}, protocol::{inline, resp}};
+use mini_redis::storage::db::DB_INDEX;
 use std::time::Duration;
 use tokio::time::Instant;
 
@@ -11,7 +11,7 @@ use tokio::signal;
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::task::JoinSet;
 
-use mini_redis::pubsub::Message;
+use mini_redis::server::pubsub::Message;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -42,6 +42,9 @@ async fn main() -> anyhow::Result<()> {
         DB_INDEX.scope(std::cell::Cell::new(0), async {
             loop {
                 tokio::time::sleep(Duration::from_secs(1)).await;
+                if shutdown::is_requested() {
+                    break;
+                }
                 db::with_db(|db| {
                     db.retain(|_, entry| !entry.expiry.is_some_and(|exp| Instant::now() >= exp));
                 });
@@ -55,6 +58,7 @@ async fn main() -> anyhow::Result<()> {
         r = accept_loop(&listener, &mut connections) => r,
         _ = signal::ctrl_c() => {
             println!("\nCtrl+C received, saving data...");
+            shutdown::request();
             let path = config::with_config(|cfg| cfg.db_path());
             DB_INDEX.scope(std::cell::Cell::new(0), async {
                 if let Err(e) = persist::save(&path).await {
@@ -91,6 +95,11 @@ async fn accept_loop(
     connections: &mut JoinSet<()>,
 ) -> anyhow::Result<()> {
     loop {
+        if shutdown::is_requested() {
+            println!("shutdown requested, stop accepting new connections");
+            return Ok(());
+        }
+
         let (stream, _) = listener
             .accept()
             .await

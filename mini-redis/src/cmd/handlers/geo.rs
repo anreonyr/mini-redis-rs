@@ -1,8 +1,8 @@
 use bytes::Bytes;
 use std::collections::BTreeSet;
 
-use crate::db::{with_db, Entry, Value};
-use crate::resp::RespType;
+use crate::storage::db::{with_db, Entry, Value};
+use crate::protocol::resp::RespType;
 
 const EARTH_RADIUS_M: f64 = 6372797.560856;
 
@@ -85,7 +85,7 @@ pub fn handle_geoadd(key: &str, members: &[(f64, f64, String)]) -> RespType {
                     zset.insert((geohash, member_bytes));
                     added += 1;
                 }
-                entry.version = crate::db::bump_version();
+                entry.version = crate::storage::db::bump_version();
                 RespType::Integer(added)
             }
             _ => wrong_type(),

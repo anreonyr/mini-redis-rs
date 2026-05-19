@@ -1,8 +1,8 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use crate::config;
-use crate::resp;
+use crate::server::config;
+use crate::protocol::resp;
 
 use super::auth::{self, ConnectionState};
 use super::handlers;
@@ -22,7 +22,7 @@ pub fn dispatch_command<'a>(
     };
 
     // Set current database for this connection
-    crate::db::set_current_db(state.db_index);
+    crate::storage::db::set_current_db(state.db_index);
 
     // Auth check: if requirepass is set and not authenticated and not a bypass command, reject
     if !state.is_authenticated()
@@ -264,7 +264,11 @@ async fn dispatch_match<'a>(
         ParsedCmd::Randomkey => handlers::handle_randomkey(),
         ParsedCmd::Save => handlers::handle_save().await,
         ParsedCmd::Bgsave => handlers::handle_bgsave(),
-        ParsedCmd::Shutdown => handlers::handle_shutdown().await,
+        ParsedCmd::Shutdown => {
+            let resp = handlers::handle_shutdown().await;
+            state.quit = true;
+            resp
+        }
         // Geo
         ParsedCmd::GeoAdd { key, members } => handlers::handle_geoadd(&key, &members),
         ParsedCmd::GeoDist { key, member1, member2, unit } => handlers::handle_geodist(&key, &member1, &member2, &unit),

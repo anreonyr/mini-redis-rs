@@ -1,6 +1,6 @@
 use crate::helpers::*;
 use crate::RedisClient;
-use mini_redis::resp::RespType;
+use mini_redis::protocol::resp::RespType;
 
 pub async fn test_set_get_roundtrip(client: &mut RedisClient) -> Result<(), String> {
     let r = client.cmd(&["SET", "test_rs:val1", "value1"]).await?;
