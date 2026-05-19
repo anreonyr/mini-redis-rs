@@ -8,6 +8,7 @@ pub(super) mod stream;
 pub(super) mod string;
 pub(super) mod zset;
 pub(super) mod hyperloglog;
+pub(super) mod scan;
 
 pub(super) use connection::*;
 pub(super) use expiry::*;
@@ -19,3 +20,4 @@ pub(super) use stream::*;
 pub(super) use string::*;
 pub(super) use zset::*;
 pub(super) use hyperloglog::*;
+pub(super) use scan::*;

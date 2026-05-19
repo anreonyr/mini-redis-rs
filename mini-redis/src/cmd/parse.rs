@@ -1077,9 +1077,74 @@ impl ParsedCmd {
                 let sources: Vec<String> = iter.collect();
                 ParsedCmd::PfMerge { dest, sources }
             }
+            // SCAN
+            "SCAN" => {
+                if args.is_empty() {
+                    return Err(wrong_arg_count("scan"));
+                }
+                let cursor = args[0].parse::<u64>().map_err(|_| CmdError::InvalidInteger)?;
+                let (match_pattern, count, type_filter) = parse_scan_args(&args[1..]);
+                ParsedCmd::Scan { cursor, match_pattern, count, type_filter }
+            }
+            "SSCAN" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count("sscan"));
+                }
+                let key = args[0].clone();
+                let cursor = args[1].parse::<u64>().map_err(|_| CmdError::InvalidInteger)?;
+                let (match_pattern, count, _type_filter) = parse_scan_args(&args[2..]);
+                ParsedCmd::Sscan { key, cursor, match_pattern, count }
+            }
+            "HSCAN" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count("hscan"));
+                }
+                let key = args[0].clone();
+                let cursor = args[1].parse::<u64>().map_err(|_| CmdError::InvalidInteger)?;
+                let (match_pattern, count, _type_filter) = parse_scan_args(&args[2..]);
+                ParsedCmd::Hscan { key, cursor, match_pattern, count }
+            }
+            "ZSCAN" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count("zscan"));
+                }
+                let key = args[0].clone();
+                let cursor = args[1].parse::<u64>().map_err(|_| CmdError::InvalidInteger)?;
+                let (match_pattern, count, _type_filter) = parse_scan_args(&args[2..]);
+                ParsedCmd::Zscan { key, cursor, match_pattern, count }
+            }
             _ => return Err(CmdError::UnknownCommand),
         })
     }
+}
+
+/// Parse optional MATCH, COUNT, and TYPE from SCAN-style args.
+fn parse_scan_args(args: &[String]) -> (Option<String>, u64, Option<String>) {
+    let mut i = 0;
+    let mut match_pattern = None;
+    let mut count = 10u64;
+    let mut type_filter = None;
+    while i < args.len() {
+        match args[i].to_uppercase().as_str() {
+            "MATCH" => {
+                i += 1;
+                match_pattern = args.get(i).cloned();
+            }
+            "COUNT" => {
+                i += 1;
+                if let Some(s) = args.get(i) {
+                    count = s.parse().unwrap_or(10);
+                }
+            }
+            "TYPE" => {
+                i += 1;
+                type_filter = args.get(i).cloned();
+            }
+            _ => {}
+        }
+        i += 1;
+    }
+    (match_pattern, count, type_filter)
 }
 
 /// Parse a RESP frame into a parsed command.

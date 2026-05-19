@@ -450,6 +450,31 @@ pub enum ParsedCmd {
         dest: String,
         sources: Vec<String>,
     },
+    // Scan
+    Scan {
+        cursor: u64,
+        match_pattern: Option<String>,
+        count: u64,
+        type_filter: Option<String>,
+    },
+    Sscan {
+        key: String,
+        cursor: u64,
+        match_pattern: Option<String>,
+        count: u64,
+    },
+    Hscan {
+        key: String,
+        cursor: u64,
+        match_pattern: Option<String>,
+        count: u64,
+    },
+    Zscan {
+        key: String,
+        cursor: u64,
+        match_pattern: Option<String>,
+        count: u64,
+    },
 }
 
 impl ParsedCmd {
@@ -569,6 +594,10 @@ impl ParsedCmd {
             ParsedCmd::PfAdd { .. } => "PFADD",
             ParsedCmd::PfCount { .. } => "PFCOUNT",
             ParsedCmd::PfMerge { .. } => "PFMERGE",
+            ParsedCmd::Scan { .. } => "SCAN",
+            ParsedCmd::Sscan { .. } => "SSCAN",
+            ParsedCmd::Hscan { .. } => "HSCAN",
+            ParsedCmd::Zscan { .. } => "ZSCAN",
         }
     }
 }

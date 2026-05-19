@@ -256,5 +256,18 @@ async fn dispatch_match<'a>(
         ParsedCmd::PfAdd { key, elements } => handlers::handle_pfadd(&key, &elements),
         ParsedCmd::PfCount { keys } => handlers::handle_pfcount(&keys),
         ParsedCmd::PfMerge { dest, sources } => handlers::handle_pfmerge(&dest, &sources),
+        // Scan
+        ParsedCmd::Scan { cursor, match_pattern, count, type_filter } => {
+            handlers::handle_scan(cursor, match_pattern, count, type_filter)
+        }
+        ParsedCmd::Sscan { key, cursor, match_pattern, count } => {
+            handlers::handle_sscan(&key, cursor, match_pattern, count)
+        }
+        ParsedCmd::Hscan { key, cursor, match_pattern, count } => {
+            handlers::handle_hscan(&key, cursor, match_pattern, count)
+        }
+        ParsedCmd::Zscan { key, cursor, match_pattern, count } => {
+            handlers::handle_zscan(&key, cursor, match_pattern, count)
+        }
     }
 }

@@ -446,6 +446,13 @@ tree_tests! {
         ("RANDOMKEY", "New") [
             "RANDOMKEY"            => tests::key::test_randomkey,
         ],
+        ("SCAN", "New") [
+            "SCAN empty"             => tests::scan::test_scan_empty,
+            "SCAN basic"             => tests::scan::test_scan_basic,
+            "SCAN MATCH"             => tests::scan::test_scan_match,
+            "SCAN COUNT"             => tests::scan::test_scan_count,
+            "SCAN full cursor iteration" => tests::scan::test_scan_full_cursor,
+        ],
     ],
     ("List", "List") [
         ("RPUSH", "Stages 8-16") [
@@ -604,6 +611,10 @@ tree_tests! {
         ("HSETNX", "New") [
             "HSETNX new"            => tests::hash::test_hsetnx,
         ],
+        ("HSCAN", "New") [
+            "HSCAN basic"           => tests::scan::test_hscan_basic,
+            "HSCAN MATCH"           => tests::scan::test_hscan_match,
+        ],
         ("WRONGTYPE", "New") [
             "HGET on string"        => tests::wrongtype::test_wrongtype_hget_on_string,
             "HSET on string"        => tests::wrongtype::test_wrongtype_hset_on_string,
@@ -652,6 +663,12 @@ tree_tests! {
         ],
         ("SMOVE", "New") [
             "SMOVE"                 => tests::set::test_smove,
+        ],
+        ("SSCAN", "New") [
+            "SSCAN basic"           => tests::scan::test_sscan_basic,
+            "SSCAN MATCH"           => tests::scan::test_sscan_match,
+            "SSCAN nonexistent key" => tests::scan::test_scan_non_existent_key,
+            "SSCAN wrongtype"       => tests::scan::test_wrongtype_scan_on_string,
         ],
         ("WRONGTYPE", "New") [
             "SADD on string"        => tests::wrongtype::test_wrongtype_sadd_on_string,
@@ -711,6 +728,10 @@ tree_tests! {
         ],
         ("ZREVRANGEBYSCORE", "New") [
             "ZREVRANGEBYSCORE"          => tests::zset::test_zrevrangebyscore,
+        ],
+        ("ZSCAN", "New") [
+            "ZSCAN basic"           => tests::scan::test_zscan_basic,
+            "ZSCAN MATCH"           => tests::scan::test_zscan_match,
         ],
         ("WRONGTYPE", "New") [
             "ZADD on string"            => tests::wrongtype::test_wrongtype_zadd_on_string,

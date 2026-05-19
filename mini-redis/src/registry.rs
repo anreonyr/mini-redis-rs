@@ -816,6 +816,35 @@ pub fn init() {
         since_stage: 0,
         summary: "Forgets all watched keys",
     });
+    // Scan
+    reg.register(CommandInfo {
+        name: "SCAN",
+        arity: -2,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Incrementally iterates the keyspace",
+    });
+    reg.register(CommandInfo {
+        name: "SSCAN",
+        arity: -3,
+        category: "Set",
+        since_stage: 0,
+        summary: "Incrementally iterates set elements",
+    });
+    reg.register(CommandInfo {
+        name: "HSCAN",
+        arity: -3,
+        category: "Hash",
+        since_stage: 0,
+        summary: "Incrementally iterates hash fields",
+    });
+    reg.register(CommandInfo {
+        name: "ZSCAN",
+        arity: -3,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Incrementally iterates sorted set elements",
+    });
     // HyperLogLog
     reg.register(CommandInfo {
         name: "PFADD",
