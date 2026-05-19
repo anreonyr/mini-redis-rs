@@ -100,6 +100,32 @@ pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
             let value = iter.next().unwrap();
             Ok(ParsedCmd::Hsetnx { key, field, value })
         }
+        "HRANDFIELD" => {
+            if args.is_empty() || args.len() > 3 {
+                return Err(wrong_arg_count("hrandfield"));
+            }
+            let mut iter = args.into_iter();
+            let key = iter.next().unwrap();
+            let count = iter.next().map(|s| s.parse::<i64>().map_err(|_| CmdError::InvalidInteger)).transpose()?;
+            let mut withvalues = false;
+            if let Some(flag) = iter.next() {
+                if flag.to_uppercase() == "WITHVALUES" {
+                    withvalues = true;
+                } else {
+                    return Err(CmdError::SyntaxError);
+                }
+            }
+            Ok(ParsedCmd::Hrandfield { key, count, withvalues })
+        }
+        "HSTRLEN" => {
+            if args.len() != 2 {
+                return Err(wrong_arg_count("hstrlen"));
+            }
+            let mut iter = args.into_iter();
+            let key = iter.next().unwrap();
+            let field = iter.next().unwrap();
+            Ok(ParsedCmd::Hstrlen { key, field })
+        }
         _ => Err(CmdError::UnknownCommand),
     }
 }
@@ -126,5 +152,65 @@ mod tests {
     fn test_hgetall_ok() {
         let r = cmd("HGETALL", vec!["k".into()]);
         assert_eq!(r, Ok(ParsedCmd::Hgetall { key: "k".into() }));
+    }
+    #[test]
+    fn test_hrandfield_no_count() {
+        let r = cmd("HRANDFIELD", vec!["k".into()]);
+        assert_eq!(
+            r,
+            Ok(ParsedCmd::Hrandfield { key: "k".into(), count: None, withvalues: false })
+        );
+    }
+    #[test]
+    fn test_hrandfield_with_count() {
+        let r = cmd("HRANDFIELD", vec!["k".into(), "3".into()]);
+        assert_eq!(
+            r,
+            Ok(ParsedCmd::Hrandfield { key: "k".into(), count: Some(3), withvalues: false })
+        );
+    }
+    #[test]
+    fn test_hrandfield_negative_count() {
+        let r = cmd("HRANDFIELD", vec!["k".into(), "-5".into()]);
+        assert_eq!(
+            r,
+            Ok(ParsedCmd::Hrandfield { key: "k".into(), count: Some(-5), withvalues: false })
+        );
+    }
+    #[test]
+    fn test_hrandfield_withvalues() {
+        let r = cmd("HRANDFIELD", vec!["k".into(), "2".into(), "WITHVALUES".into()]);
+        assert_eq!(
+            r,
+            Ok(ParsedCmd::Hrandfield { key: "k".into(), count: Some(2), withvalues: true })
+        );
+    }
+    #[test]
+    fn test_hrandfield_wrong_arg_count() {
+        let r = cmd("HRANDFIELD", vec![]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
+    }
+    #[test]
+    fn test_hrandfield_too_many_args() {
+        let r = cmd("HRANDFIELD", vec!["k".into(), "1".into(), "WITHVALUES".into(), "extra".into()]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
+    }
+    #[test]
+    fn test_hstrlen_ok() {
+        let r = cmd("HSTRLEN", vec!["k".into(), "field".into()]);
+        assert_eq!(
+            r,
+            Ok(ParsedCmd::Hstrlen { key: "k".into(), field: "field".into() })
+        );
+    }
+    #[test]
+    fn test_hstrlen_wrong_arg_count() {
+        let r = cmd("HSTRLEN", vec!["k".into()]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
+    }
+    #[test]
+    fn test_hstrlen_too_many_args() {
+        let r = cmd("HSTRLEN", vec!["k".into(), "f1".into(), "f2".into()]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
     }
 }

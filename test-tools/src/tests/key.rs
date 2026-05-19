@@ -120,3 +120,18 @@ pub async fn test_randomkey(client: &mut RedisClient) -> Result<(), String> {
     crate::assert_resp!(r, helpers::bulk_str("k1"), "RANDOMKEY");
     Ok(())
 }
+
+pub async fn test_touch_basic(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SET", "test_rs:touch_k", "v"]).await?;
+    let r = client.cmd(&["TOUCH", "test_rs:touch_k"]).await?;
+    crate::assert_resp!(r, helpers::int(1), "TOUCH single key");
+    Ok(())
+}
+
+pub async fn test_touch_multiple(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SET", "test_rs:ta", "1"]).await?;
+    client.cmd(&["SET", "test_rs:tb", "2"]).await?;
+    let r = client.cmd(&["TOUCH", "test_rs:ta", "test_rs:tb", "test_rs:nonexist"]).await?;
+    crate::assert_resp!(r, helpers::int(2), "TOUCH multiple keys (2 exist)");
+    Ok(())
+}

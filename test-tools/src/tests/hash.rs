@@ -179,3 +179,35 @@ pub async fn test_hsetnx(client: &mut RedisClient) -> Result<(), String> {
     crate::assert_resp!(r, int(0), "HSETNX existing");
     Ok(())
 }
+
+pub async fn test_hrandfield_basic(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["HSET", "test_rs:hrf", "f1", "v1", "f2", "v2", "f3", "v3"]).await?;
+    let r = client.cmd(&["HRANDFIELD", "test_rs:hrf"]).await?;
+    assert!(matches!(&r, crate::RespType::BulkString(Some(_))), "HRANDFIELD basic: got {:?}", r);
+    Ok(())
+}
+
+pub async fn test_hrandfield_count(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["HRANDFIELD", "test_rs:hrf", "2"]).await?;
+    assert!(matches!(&r, crate::RespType::Array(Some(v)) if v.len() == 2), "HRANDFIELD count 2: got {:?}", r);
+    Ok(())
+}
+
+pub async fn test_hrandfield_nonexistent(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["HRANDFIELD", "test_rs:nokey"]).await?;
+    crate::assert_resp!(r, null_bulk(), "HRANDFIELD nonexistent key");
+    Ok(())
+}
+
+pub async fn test_hstrlen_basic(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["HSET", "test_rs:hsl", "field", "hello"]).await?;
+    let r = client.cmd(&["HSTRLEN", "test_rs:hsl", "field"]).await?;
+    crate::assert_resp!(r, int(5), "HSTRLEN");
+    Ok(())
+}
+
+pub async fn test_hstrlen_nonexistent(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["HSTRLEN", "test_rs:nokey", "field"]).await?;
+    crate::assert_resp!(r, int(0), "HSTRLEN nonexistent key");
+    Ok(())
+}

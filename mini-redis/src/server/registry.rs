@@ -202,6 +202,13 @@ pub fn init() {
         summary: "Removes and returns the first element of a list; blocks on empty lists with timeout",
     });
     reg.register(CommandInfo {
+        name: "BRPOP",
+        arity: -3,
+        category: "List",
+        since_stage: 0,
+        summary: "Removes and returns the last element of a list; blocks on empty lists with timeout",
+    });
+    reg.register(CommandInfo {
         name: "COMMAND",
         arity: -1,
         category: "Server",
@@ -380,6 +387,48 @@ pub fn init() {
         since_stage: 0,
         summary: "Removes the expiration from a key",
     });
+    reg.register(CommandInfo {
+        name: "PEXPIRE",
+        arity: 3,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Sets a key's time to live in milliseconds",
+    });
+    reg.register(CommandInfo {
+        name: "PTTL",
+        arity: 2,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Gets the remaining time to live of a key in milliseconds",
+    });
+    reg.register(CommandInfo {
+        name: "PEXPIREAT",
+        arity: 3,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Sets a key's expiration as a Unix timestamp in milliseconds",
+    });
+    reg.register(CommandInfo {
+        name: "EXPIREAT",
+        arity: 3,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Sets a key's expiration as a Unix timestamp in seconds",
+    });
+    reg.register(CommandInfo {
+        name: "EXPIRETIME",
+        arity: 2,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Returns the expiration time of a key as a Unix timestamp in seconds",
+    });
+    reg.register(CommandInfo {
+        name: "PEXPIRETIME",
+        arity: 2,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Returns the expiration time of a key as a Unix timestamp in milliseconds",
+    });
     // More String
     reg.register(CommandInfo {
         name: "GETSET",
@@ -409,6 +458,27 @@ pub fn init() {
         since_stage: 0,
         summary: "Sets multiple keys to multiple values, only if none exist",
     });
+    reg.register(CommandInfo {
+        name: "SETNX",
+        arity: 3,
+        category: "String",
+        since_stage: 0,
+        summary: "Sets a key's value only if the key does not exist",
+    });
+    reg.register(CommandInfo {
+        name: "GETEX",
+        arity: -2,
+        category: "String",
+        since_stage: 0,
+        summary: "Gets the value of a key and optionally sets its expiration",
+    });
+    reg.register(CommandInfo {
+        name: "GETDEL",
+        arity: 2,
+        category: "String",
+        since_stage: 0,
+        summary: "Gets the value of a key and deletes the key",
+    });
     // More List
     reg.register(CommandInfo {
         name: "RPOPLPUSH",
@@ -423,6 +493,34 @@ pub fn init() {
         category: "List",
         since_stage: 0,
         summary: "Sets the value of an element in a list by its index",
+    });
+    reg.register(CommandInfo {
+        name: "BRPOPLPUSH",
+        arity: 4,
+        category: "List",
+        since_stage: 0,
+        summary: "Pops an element from a list, pushes it to another list and returns it; blocks",
+    });
+    reg.register(CommandInfo {
+        name: "LMOVE",
+        arity: 5,
+        category: "List",
+        since_stage: 0,
+        summary: "Atomically moves an element from one list to another",
+    });
+    reg.register(CommandInfo {
+        name: "BLMOVE",
+        arity: 6,
+        category: "List",
+        since_stage: 0,
+        summary: "Blocks and atomically moves an element from one list to another",
+    });
+    reg.register(CommandInfo {
+        name: "LPOS",
+        arity: -3,
+        category: "List",
+        since_stage: 0,
+        summary: "Returns the index of matching elements in a list",
     });
     // More Hash
     reg.register(CommandInfo {
@@ -446,6 +544,20 @@ pub fn init() {
         since_stage: 0,
         summary: "Sets the value of a hash field, only if the field does not exist",
     });
+    reg.register(CommandInfo {
+        name: "HRANDFIELD",
+        arity: -2,
+        category: "Hash",
+        since_stage: 0,
+        summary: "Returns one or more random fields from a hash",
+    });
+    reg.register(CommandInfo {
+        name: "HSTRLEN",
+        arity: 3,
+        category: "Hash",
+        since_stage: 0,
+        summary: "Returns the length of a hash field's value",
+    });
     // More Set
     reg.register(CommandInfo {
         name: "SMOVE",
@@ -453,6 +565,27 @@ pub fn init() {
         category: "Set",
         since_stage: 0,
         summary: "Moves a member from one set to another",
+    });
+    reg.register(CommandInfo {
+        name: "SUNIONSTORE",
+        arity: -3,
+        category: "Set",
+        since_stage: 0,
+        summary: "Stores the union of multiple sets in a key",
+    });
+    reg.register(CommandInfo {
+        name: "SINTERSTORE",
+        arity: -3,
+        category: "Set",
+        since_stage: 0,
+        summary: "Stores the intersection of multiple sets in a key",
+    });
+    reg.register(CommandInfo {
+        name: "SDIFFSTORE",
+        arity: -3,
+        category: "Set",
+        since_stage: 0,
+        summary: "Stores the difference of multiple sets in a key",
     });
     // More ZSet
     reg.register(CommandInfo {
@@ -475,6 +608,34 @@ pub fn init() {
         category: "ZSet",
         since_stage: 0,
         summary: "Returns a range of members in a sorted set, by score, in reverse order",
+    });
+    reg.register(CommandInfo {
+        name: "ZPOPMIN",
+        arity: -2,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Removes and returns members with the lowest scores in a sorted set",
+    });
+    reg.register(CommandInfo {
+        name: "ZPOPMAX",
+        arity: -2,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Removes and returns members with the highest scores in a sorted set",
+    });
+    reg.register(CommandInfo {
+        name: "BZPOPMIN",
+        arity: -3,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Blocks and removes members with the lowest scores in a sorted set",
+    });
+    reg.register(CommandInfo {
+        name: "BZPOPMAX",
+        arity: -3,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Blocks and removes members with the highest scores in a sorted set",
     });
     // Auth
     reg.register(CommandInfo {
@@ -511,6 +672,13 @@ pub fn init() {
         category: "Connection",
         since_stage: 0,
         summary: "Handshake with the server",
+    });
+    reg.register(CommandInfo {
+        name: "TIME",
+        arity: 1,
+        category: "Server",
+        since_stage: 0,
+        summary: "Returns the current server time as a two-element array (seconds, microseconds)",
     });
     reg.register(CommandInfo {
         name: "PUBLISH",
@@ -575,6 +743,13 @@ pub fn init() {
         category: "Generic",
         since_stage: 0,
         summary: "Returns a random key name from the database",
+    });
+    reg.register(CommandInfo {
+        name: "TOUCH",
+        arity: -2,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Updates the last access time of one or more keys",
     });
     // Hash
     reg.register(CommandInfo {
@@ -924,6 +1099,20 @@ pub fn init() {
         category: "String",
         since_stage: 0,
         summary: "Finds the first set or clear bit",
+    });
+    reg.register(CommandInfo {
+        name: "BITFIELD",
+        arity: -2,
+        category: "String",
+        since_stage: 0,
+        summary: "Performs atomic bitfield operations on a string",
+    });
+    reg.register(CommandInfo {
+        name: "BITFIELD_RO",
+        arity: -2,
+        category: "String",
+        since_stage: 0,
+        summary: "Performs read-only atomic bitfield operations on a string",
     });
     // Geo
     reg.register(CommandInfo {

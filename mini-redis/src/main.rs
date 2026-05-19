@@ -28,10 +28,12 @@ async fn main() -> anyhow::Result<()> {
     // Auto-load persistence file on startup
     let path = config::with_config(|cfg| cfg.db_path());
     if persist::file_exists(&path) {
-        match persist::load(&path) {
-            Ok(n) => println!("Loaded {} keys from {}", n, path),
-            Err(e) => eprintln!("Failed to load persistence file: {}", e),
-        }
+        DB_INDEX.scope(std::cell::Cell::new(0), async {
+            match persist::load(&path) {
+                Ok(n) => println!("Loaded {} keys from {}", n, path),
+                Err(e) => eprintln!("Failed to load persistence file: {}", e),
+            }
+        }).await;
     }
 
     let listener = TcpListener::bind("127.0.0.1:6379")

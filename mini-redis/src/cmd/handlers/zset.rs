@@ -1,10 +1,14 @@
 use crate::storage::db::{with_db, Value};
 use crate::protocol::resp::RespType;
+use crate::server::waiters;
 use bytes::Bytes;
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::Notify;
 
 pub fn handle_zadd(key: &str, members: &[(i64, String)]) -> RespType {
-    with_db(|db| {
+    let result = with_db(|db| {
         let entry = db.entry(key.to_string()).or_insert_with(|| {
             crate::storage::db::Entry::new(
                 Value::ZSet(std::collections::BTreeSet::new()),
@@ -34,7 +38,9 @@ pub fn handle_zadd(key: &str, members: &[(i64, String)]) -> RespType {
             }
             _ => wrong_type(),
         }
-    })
+    });
+    waiters::notify_waiters(key);
+    result
 }
 
 pub fn handle_zrange(key: &str, start: i64, stop: i64, withscores: bool) -> RespType {
@@ -430,6 +436,200 @@ pub fn handle_zrevrangebyscore(
         },
         None => RespType::Array(Some(Vec::new())),
     })
+}
+
+// ── ZPOPMIN / ZPOPMAX ────────────────────────────────────────────
+
+pub fn handle_zpopmin(key: &str, count: Option<usize>) -> RespType {
+    let n = count.unwrap_or(1);
+    with_db(|db| match db.get_mut(key) {
+        Some(entry) => match &mut entry.value {
+            Value::ZSet(set) => {
+                let mut result = Vec::new();
+                for _ in 0..n {
+                    if let Some((score, member)) = set.pop_first() {
+                        result.push(RespType::BulkString(Some(member)));
+                        result.push(RespType::BulkString(Some(
+                            bytes::Bytes::copy_from_slice(score.to_string().as_bytes()),
+                        )));
+                    } else {
+                        break;
+                    }
+                }
+                entry.version = crate::storage::db::bump_version();
+                if set.is_empty() {
+                    db.remove(key);
+                }
+                RespType::Array(Some(result))
+            }
+            _ => wrong_type(),
+        },
+        None => RespType::Array(Some(Vec::new())),
+    })
+}
+
+pub fn handle_zpopmax(key: &str, count: Option<usize>) -> RespType {
+    let n = count.unwrap_or(1);
+    with_db(|db| match db.get_mut(key) {
+        Some(entry) => match &mut entry.value {
+            Value::ZSet(set) => {
+                let mut result = Vec::new();
+                for _ in 0..n {
+                    if let Some((score, member)) = set.pop_last() {
+                        result.push(RespType::BulkString(Some(member)));
+                        result.push(RespType::BulkString(Some(
+                            bytes::Bytes::copy_from_slice(score.to_string().as_bytes()),
+                        )));
+                    } else {
+                        break;
+                    }
+                }
+                entry.version = crate::storage::db::bump_version();
+                if set.is_empty() {
+                    db.remove(key);
+                }
+                RespType::Array(Some(result))
+            }
+            _ => wrong_type(),
+        },
+        None => RespType::Array(Some(Vec::new())),
+    })
+}
+
+// ── BZPOPMIN / BZPOPMAX (blocking) ──────────────────────────────
+
+pub fn try_bzpopmin(keys: &[String]) -> Option<RespType> {
+    with_db(|db| {
+        for key in keys {
+            match db.get_mut(key) {
+                None => continue,
+                Some(entry) => match &mut entry.value {
+                    Value::ZSet(set) => {
+                        if let Some((score, member)) = set.pop_first() {
+                            entry.version = crate::storage::db::bump_version();
+                            if set.is_empty() {
+                                db.remove(key);
+                            }
+                            return Some(RespType::Array(Some(vec![
+                                RespType::BulkString(Some(Bytes::copy_from_slice(
+                                    key.as_bytes(),
+                                ))),
+                                RespType::BulkString(Some(member)),
+                                RespType::BulkString(Some(
+                                    bytes::Bytes::copy_from_slice(
+                                        score.to_string().as_bytes(),
+                                    ),
+                                )),
+                            ])));
+                        }
+                    }
+                    _ => return Some(wrong_type()),
+                },
+            }
+        }
+        None
+    })
+}
+
+pub async fn handle_bzpopmin(keys: &[String], timeout: u64) -> RespType {
+    // First try — non-blocking
+    if let Some(response) = try_bzpopmin(keys) {
+        return response;
+    }
+
+    // Blocking loop
+    let notify = Arc::new(Notify::new());
+
+    loop {
+        let guard = with_db(|_| waiters::register(keys, &notify));
+
+        if timeout == 0 {
+            notify.notified().await;
+        } else {
+            let notified = notify.notified();
+            tokio::pin!(notified);
+            let timed_out =
+                tokio::time::timeout(Duration::from_secs(timeout), notified).await.is_err();
+            if timed_out {
+                drop(guard);
+                return RespType::Array(None);
+            }
+        }
+
+        drop(guard);
+
+        match try_bzpopmin(keys) {
+            Some(response) => return response,
+            None => continue,
+        }
+    }
+}
+
+pub fn try_bzpopmax(keys: &[String]) -> Option<RespType> {
+    with_db(|db| {
+        for key in keys {
+            match db.get_mut(key) {
+                None => continue,
+                Some(entry) => match &mut entry.value {
+                    Value::ZSet(set) => {
+                        if let Some((score, member)) = set.pop_last() {
+                            entry.version = crate::storage::db::bump_version();
+                            if set.is_empty() {
+                                db.remove(key);
+                            }
+                            return Some(RespType::Array(Some(vec![
+                                RespType::BulkString(Some(Bytes::copy_from_slice(
+                                    key.as_bytes(),
+                                ))),
+                                RespType::BulkString(Some(member)),
+                                RespType::BulkString(Some(
+                                    bytes::Bytes::copy_from_slice(
+                                        score.to_string().as_bytes(),
+                                    ),
+                                )),
+                            ])));
+                        }
+                    }
+                    _ => return Some(wrong_type()),
+                },
+            }
+        }
+        None
+    })
+}
+
+pub async fn handle_bzpopmax(keys: &[String], timeout: u64) -> RespType {
+    // First try — non-blocking
+    if let Some(response) = try_bzpopmax(keys) {
+        return response;
+    }
+
+    // Blocking loop
+    let notify = Arc::new(Notify::new());
+
+    loop {
+        let guard = with_db(|_| waiters::register(keys, &notify));
+
+        if timeout == 0 {
+            notify.notified().await;
+        } else {
+            let notified = notify.notified();
+            tokio::pin!(notified);
+            let timed_out =
+                tokio::time::timeout(Duration::from_secs(timeout), notified).await.is_err();
+            if timed_out {
+                drop(guard);
+                return RespType::Array(None);
+            }
+        }
+
+        drop(guard);
+
+        match try_bzpopmax(keys) {
+            Some(response) => return response,
+            None => continue,
+        }
+    }
 }
 
 fn wrong_type() -> RespType {

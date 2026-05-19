@@ -303,6 +303,107 @@ pub fn handle_smove(source: &str, destination: &str, member: &str) -> RespType {
     })
 }
 
+pub fn handle_sunionstore(dest: &str, keys: &[String]) -> RespType {
+    with_db(|db| {
+        let mut result = std::collections::HashSet::new();
+        for key in keys {
+            if let Some(entry) = db.get(key) {
+                if let Value::Set(set) = &entry.value {
+                    result.extend(set.iter().cloned());
+                } else {
+                    return wrong_type();
+                }
+            }
+        }
+        let count = result.len() as i64;
+        let entry = crate::storage::db::Entry::new(Value::Set(result), None);
+        db.insert(dest.to_string(), entry);
+        RespType::Integer(count)
+    })
+}
+
+pub fn handle_sinterstore(dest: &str, keys: &[String]) -> RespType {
+    with_db(|db| {
+        let first = match keys.first() {
+            Some(k) => k,
+            None => return RespType::Integer(0),
+        };
+        let base = match db.get(first) {
+            Some(entry) => match &entry.value {
+                Value::Set(set) => set.clone(),
+                _ => return wrong_type(),
+            },
+            None => {
+                let entry =
+                    crate::storage::db::Entry::new(Value::Set(std::collections::HashSet::new()), None);
+                db.insert(dest.to_string(), entry);
+                return RespType::Integer(0);
+            }
+        };
+        let mut result = base;
+        for key in &keys[1..] {
+            match db.get(key) {
+                Some(entry) => match &entry.value {
+                    Value::Set(set) => {
+                        result = result.intersection(set).cloned().collect();
+                    }
+                    _ => return wrong_type(),
+                },
+                None => {
+                    let entry = crate::storage::db::Entry::new(
+                        Value::Set(std::collections::HashSet::new()),
+                        None,
+                    );
+                    db.insert(dest.to_string(), entry);
+                    return RespType::Integer(0);
+                }
+            }
+        }
+        let count = result.len() as i64;
+        let entry = crate::storage::db::Entry::new(Value::Set(result), None);
+        db.insert(dest.to_string(), entry);
+        RespType::Integer(count)
+    })
+}
+
+pub fn handle_sdiffstore(dest: &str, keys: &[String]) -> RespType {
+    with_db(|db| {
+        let first = match keys.first() {
+            Some(k) => k,
+            None => return RespType::Integer(0),
+        };
+        let mut result = match db.get(first) {
+            Some(entry) => match &entry.value {
+                Value::Set(set) => set.clone(),
+                _ => return wrong_type(),
+            },
+            None => {
+                let entry =
+                    crate::storage::db::Entry::new(Value::Set(std::collections::HashSet::new()), None);
+                db.insert(dest.to_string(), entry);
+                return RespType::Integer(0);
+            }
+        };
+        for key in &keys[1..] {
+            match db.get(key) {
+                Some(entry) => match &entry.value {
+                    Value::Set(set) => {
+                        for elem in set.iter() {
+                            result.remove(elem);
+                        }
+                    }
+                    _ => return wrong_type(),
+                },
+                None => {}
+            }
+        }
+        let count = result.len() as i64;
+        let entry = crate::storage::db::Entry::new(Value::Set(result), None);
+        db.insert(dest.to_string(), entry);
+        RespType::Integer(count)
+    })
+}
+
 fn wrong_type() -> RespType {
     RespType::Error(
         "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),

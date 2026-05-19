@@ -96,6 +96,45 @@ pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
             let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("persist"))?;
             Ok(ParsedCmd::Persist { key })
         }
+        "PEXPIRE" => {
+            if args.len() != 2 {
+                return Err(wrong_arg_count("pexpire"));
+            }
+            let mut iter = args.into_iter();
+            let key = iter.next().unwrap();
+            let milliseconds = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+            Ok(ParsedCmd::Pexpire { key, milliseconds })
+        }
+        "PTTL" => {
+            let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("pttl"))?;
+            Ok(ParsedCmd::Pttl { key })
+        }
+        "PEXPIREAT" => {
+            if args.len() != 2 {
+                return Err(wrong_arg_count("pexpireat"));
+            }
+            let mut iter = args.into_iter();
+            let key = iter.next().unwrap();
+            let timestamp_ms = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+            Ok(ParsedCmd::Pexpireat { key, timestamp_ms })
+        }
+        "EXPIREAT" => {
+            if args.len() != 2 {
+                return Err(wrong_arg_count("expireat"));
+            }
+            let mut iter = args.into_iter();
+            let key = iter.next().unwrap();
+            let timestamp = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+            Ok(ParsedCmd::Expireat { key, timestamp })
+        }
+        "EXPIRETIME" => {
+            let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("expiretime"))?;
+            Ok(ParsedCmd::Expiretime { key })
+        }
+        "PEXPIRETIME" => {
+            let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("pexpiretime"))?;
+            Ok(ParsedCmd::Pexpiretime { key })
+        }
         // Auth
         "AUTH" => {
             let password = args.into_iter().next().ok_or_else(|| wrong_arg_count("auth"))?;
@@ -105,6 +144,15 @@ pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
         "SAVE" => Ok(ParsedCmd::Save),
         "BGSAVE" => Ok(ParsedCmd::Bgsave),
         "SHUTDOWN" => Ok(ParsedCmd::Shutdown),
+        // Time
+        "TIME" => Ok(ParsedCmd::Time),
+        // Touch (key management)
+        "TOUCH" => {
+            if args.is_empty() {
+                return Err(wrong_arg_count("touch"));
+            }
+            Ok(ParsedCmd::Touch { keys: args })
+        }
         // Connection
         "SELECT" => {
             let index = args.into_iter().next()

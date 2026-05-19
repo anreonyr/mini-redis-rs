@@ -89,6 +89,33 @@ pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
             let member = iter.next().unwrap();
             Ok(ParsedCmd::Smove { source, destination, member })
         }
+        "SUNIONSTORE" => {
+            if args.len() < 2 {
+                return Err(wrong_arg_count("sunionstore"));
+            }
+            let mut iter = args.into_iter();
+            let dest = iter.next().unwrap();
+            let keys: Vec<String> = iter.collect();
+            Ok(ParsedCmd::Sunionstore { dest, keys })
+        }
+        "SINTERSTORE" => {
+            if args.len() < 2 {
+                return Err(wrong_arg_count("sinterstore"));
+            }
+            let mut iter = args.into_iter();
+            let dest = iter.next().unwrap();
+            let keys: Vec<String> = iter.collect();
+            Ok(ParsedCmd::Sinterstore { dest, keys })
+        }
+        "SDIFFSTORE" => {
+            if args.len() < 2 {
+                return Err(wrong_arg_count("sdiffstore"));
+            }
+            let mut iter = args.into_iter();
+            let dest = iter.next().unwrap();
+            let keys: Vec<String> = iter.collect();
+            Ok(ParsedCmd::Sdiffstore { dest, keys })
+        }
         _ => Err(CmdError::UnknownCommand),
     }
 }
@@ -114,6 +141,36 @@ mod tests {
     #[test]
     fn test_sinter_empty() {
         let r = cmd("SINTER", vec![]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
+    }
+    #[test]
+    fn test_sunionstore_ok() {
+        let r = cmd("SUNIONSTORE", vec!["dest".into(), "a".into(), "b".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Sunionstore { .. })));
+    }
+    #[test]
+    fn test_sinterstore_ok() {
+        let r = cmd("SINTERSTORE", vec!["dest".into(), "a".into(), "b".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Sinterstore { .. })));
+    }
+    #[test]
+    fn test_sdiffstore_ok() {
+        let r = cmd("SDIFFSTORE", vec!["dest".into(), "a".into(), "b".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Sdiffstore { .. })));
+    }
+    #[test]
+    fn test_sunionstore_too_few() {
+        let r = cmd("SUNIONSTORE", vec!["dest".into()]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
+    }
+    #[test]
+    fn test_sinterstore_too_few() {
+        let r = cmd("SINTERSTORE", vec!["dest".into()]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
+    }
+    #[test]
+    fn test_sdiffstore_too_few() {
+        let r = cmd("SDIFFSTORE", vec!["dest".into()]);
         assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
     }
 }

@@ -249,6 +249,48 @@ pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
                 Ok(ParsedCmd::ZDiff { numkeys, keys, withscores })
             }
         }
+        "ZPOPMIN" => {
+            if args.len() < 1 || args.len() > 2 {
+                return Err(wrong_arg_count("zpopmin"));
+            }
+            let mut iter = args.into_iter();
+            let key = iter.next().unwrap();
+            let count = match iter.next() {
+                Some(s) => Some(s.parse().map_err(|_| CmdError::InvalidInteger)?),
+                None => None,
+            };
+            Ok(ParsedCmd::Zpopmin { key, count })
+        }
+        "ZPOPMAX" => {
+            if args.len() < 1 || args.len() > 2 {
+                return Err(wrong_arg_count("zpopmax"));
+            }
+            let mut iter = args.into_iter();
+            let key = iter.next().unwrap();
+            let count = match iter.next() {
+                Some(s) => Some(s.parse().map_err(|_| CmdError::InvalidInteger)?),
+                None => None,
+            };
+            Ok(ParsedCmd::Zpopmax { key, count })
+        }
+        "BZPOPMIN" => {
+            if args.len() < 2 {
+                return Err(wrong_arg_count("bzpopmin"));
+            }
+            let mut args = args;
+            let timeout = args.pop().unwrap();
+            let timeout = timeout.parse().map_err(|_| CmdError::InvalidInteger)?;
+            Ok(ParsedCmd::Bzpopmin { keys: args, timeout })
+        }
+        "BZPOPMAX" => {
+            if args.len() < 2 {
+                return Err(wrong_arg_count("bzpopmax"));
+            }
+            let mut args = args;
+            let timeout = args.pop().unwrap();
+            let timeout = timeout.parse().map_err(|_| CmdError::InvalidInteger)?;
+            Ok(ParsedCmd::Bzpopmax { keys: args, timeout })
+        }
         _ => Err(CmdError::UnknownCommand),
     }
 }
@@ -286,6 +328,41 @@ mod tests {
     fn test_zdiff_ok() {
         let r = cmd("ZDIFF", vec!["2".into(), "a".into(), "b".into()]);
         assert!(matches!(r, Ok(ParsedCmd::ZDiff { .. })));
+    }
+    #[test]
+    fn test_zpopmin_ok() {
+        let r = cmd("ZPOPMIN", vec!["k".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Zpopmin { key, count }) if key == "k" && count.is_none()));
+    }
+    #[test]
+    fn test_zpopmin_with_count() {
+        let r = cmd("ZPOPMIN", vec!["k".into(), "3".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Zpopmin { key, count }) if key == "k" && count == Some(3)));
+    }
+    #[test]
+    fn test_zpopmin_invalid_count() {
+        let r = cmd("ZPOPMIN", vec!["k".into(), "abc".into()]);
+        assert!(matches!(r, Err(CmdError::InvalidInteger)));
+    }
+    #[test]
+    fn test_zpopmax_ok() {
+        let r = cmd("ZPOPMAX", vec!["k".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Zpopmax { key, count }) if key == "k" && count.is_none()));
+    }
+    #[test]
+    fn test_bzpopmin_ok() {
+        let r = cmd("BZPOPMIN", vec!["k1".into(), "k2".into(), "10".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Bzpopmin { keys, timeout }) if keys == vec!["k1", "k2"] && timeout == 10));
+    }
+    #[test]
+    fn test_bzpopmin_too_few_args() {
+        let r = cmd("BZPOPMIN", vec!["k1".into()]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
+    }
+    #[test]
+    fn test_bzpopmax_ok() {
+        let r = cmd("BZPOPMAX", vec!["k1".into(), "5".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Bzpopmax { keys, timeout }) if keys == vec!["k1"] && timeout == 5));
     }
 }
 

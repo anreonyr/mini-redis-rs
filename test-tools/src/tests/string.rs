@@ -208,3 +208,93 @@ pub async fn test_msetnx(client: &mut RedisClient) -> Result<(), String> {
     crate::assert_resp!(r, int(0), "MSETNX should fail when key exists");
     Ok(())
 }
+
+pub async fn test_setnx_new(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["SETNX", "test_rs:snx", "first"]).await?;
+    crate::assert_resp!(r, int(1), "SETNX new key should return 1");
+    let r = client.cmd(&["GET", "test_rs:snx"]).await?;
+    crate::assert_resp!(r, bulk_str("first"), "GET after SETNX");
+    Ok(())
+}
+
+pub async fn test_setnx_exists(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["SETNX", "test_rs:snx", "second"]).await?;
+    crate::assert_resp!(r, int(0), "SETNX existing key should return 0");
+    let r = client.cmd(&["GET", "test_rs:snx"]).await?;
+    crate::assert_resp!(r, bulk_str("first"), "GET should still be first value");
+    Ok(())
+}
+
+pub async fn test_setnx_wrong_args(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["SETNX", "onlykey"]).await?;
+    crate::assert_match!(r, RespType::Error(_), "SETNX wrong args");
+    Ok(())
+}
+
+pub async fn test_getex_basic(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SET", "test_rs:getex", "myval"]).await?;
+    let r = client.cmd(&["GETEX", "test_rs:getex"]).await?;
+    crate::assert_resp!(r, bulk_str("myval"), "GETEX without expiry returns value");
+    Ok(())
+}
+
+pub async fn test_getex_with_px(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SET", "test_rs:getex_px", "v"]).await?;
+    let r = client.cmd(&["GETEX", "test_rs:getex_px", "PX", "100"]).await?;
+    crate::assert_resp!(r, bulk_str("v"), "GETEX PX returns value");
+    let r = client.cmd(&["PTTL", "test_rs:getex_px"]).await?;
+    assert!(matches!(&r, RespType::Integer(n) if *n > 0 && *n <= 100), "GETEX PX: PTTL should be positive, got {:?}", r);
+    Ok(())
+}
+
+pub async fn test_getex_with_persist(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SET", "test_rs:getex_ps", "v", "EX", "9999"]).await?;
+    let r = client.cmd(&["GETEX", "test_rs:getex_ps", "PERSIST"]).await?;
+    crate::assert_resp!(r, bulk_str("v"), "GETEX PERSIST returns value");
+    let r = client.cmd(&["TTL", "test_rs:getex_ps"]).await?;
+    crate::assert_resp!(r, int(-1), "GETEX PERSIST: TTL should be -1");
+    Ok(())
+}
+
+pub async fn test_getex_nonexistent(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["GETEX", "test_rs:nonexist_getex"]).await?;
+    crate::assert_resp!(r, null_bulk(), "GETEX nonexistent key");
+    Ok(())
+}
+
+pub async fn test_getdel_basic(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SET", "test_rs:gdel", "todel"]).await?;
+    let r = client.cmd(&["GETDEL", "test_rs:gdel"]).await?;
+    crate::assert_resp!(r, bulk_str("todel"), "GETDEL returns value");
+    let r = client.cmd(&["GET", "test_rs:gdel"]).await?;
+    crate::assert_resp!(r, null_bulk(), "GET after GETDEL should be nil");
+    Ok(())
+}
+
+pub async fn test_getdel_nonexistent(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["GETDEL", "test_rs:nonexist_gdel"]).await?;
+    crate::assert_resp!(r, null_bulk(), "GETDEL nonexistent key");
+    Ok(())
+}
+
+pub async fn test_bitfield_get_set(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["BITFIELD", "test_rs:bf", "SET", "u8", "0", "42"]).await?;
+    match &r {
+        crate::RespType::Array(Some(items)) if items.len() == 1 => {
+            if let crate::RespType::Integer(_) = items[0] { Ok(()) }
+            else { Err(format!("BITFIELD SET: unexpected: {}", r)) }
+        }
+        _ => Err(format!("BITFIELD SET: expected Array, got {}", r)),
+    }
+}
+
+pub async fn test_bitfield_ro(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["BITFIELD_RO", "test_rs:bf", "GET", "u8", "0"]).await?;
+    match &r {
+        crate::RespType::Array(Some(items)) if items.len() == 1 => {
+            if let crate::RespType::Integer(_) = items[0] { Ok(()) }
+            else { Err(format!("BITFIELD_RO: unexpected: {}", r)) }
+        }
+        _ => Err(format!("BITFIELD_RO: expected Array, got {}", r)),
+    }
+}

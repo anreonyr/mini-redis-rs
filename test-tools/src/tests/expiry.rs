@@ -86,3 +86,88 @@ pub async fn test_persist_no_expiry(client: &mut RedisClient) -> Result<(), Stri
     crate::assert_resp!(r, int(0), "PERSIST key without expiry should return 0");
     Ok(())
 }
+
+pub async fn test_pexpire(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SET", "test_rs:pexp", "v"]).await?;
+    let r = client.cmd(&["PEXPIRE", "test_rs:pexp", "50000"]).await?;
+    crate::assert_resp!(r, int(1), "PEXPIRE should return 1");
+    let r = client.cmd(&["PTTL", "test_rs:pexp"]).await?;
+    assert!(matches!(&r, crate::RespType::Integer(n) if *n > 0 && *n <= 50000), "PTTL should be between 1 and 50000, got {:?}", r);
+    Ok(())
+}
+
+pub async fn test_pexpire_nonexistent(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["PEXPIRE", "test_rs:nokey", "10000"]).await?;
+    crate::assert_resp!(r, int(0), "PEXPIRE nonexistent key");
+    Ok(())
+}
+
+pub async fn test_pttl_with_expiry(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SET", "test_rs:pttl_k", "v", "PX", "50000"]).await?;
+    let r = client.cmd(&["PTTL", "test_rs:pttl_k"]).await?;
+    assert!(matches!(&r, crate::RespType::Integer(n) if *n > 0 && *n <= 50000), "PTTL with expiry, got {:?}", r);
+    Ok(())
+}
+
+pub async fn test_pttl_no_expiry(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SET", "test_rs:pttl_no", "v"]).await?;
+    let r = client.cmd(&["PTTL", "test_rs:pttl_no"]).await?;
+    crate::assert_resp!(r, int(-1), "PTTL no expiry should return -1");
+    Ok(())
+}
+
+pub async fn test_pttl_nonexistent(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["PTTL", "test_rs:nokey_pttl"]).await?;
+    crate::assert_resp!(r, int(-2), "PTTL nonexistent should return -2");
+    Ok(())
+}
+
+pub async fn test_expireat_basic(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SET", "test_rs:eat", "v"]).await?;
+    let r = client.cmd(&["EXPIREAT", "test_rs:eat", "9999999999"]).await?;
+    crate::assert_resp!(r, int(1), "EXPIREAT should return 1");
+    let r = client.cmd(&["EXPIRETIME", "test_rs:eat"]).await?;
+    assert!(matches!(&r, crate::RespType::Integer(n) if *n > 0), "EXPIRETIME should be positive, got {:?}", r);
+    Ok(())
+}
+
+pub async fn test_expireat_nonexistent(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["EXPIREAT", "test_rs:nokey_eat", "9999999999"]).await?;
+    crate::assert_resp!(r, int(0), "EXPIREAT nonexistent key");
+    Ok(())
+}
+
+pub async fn test_expiretime_no_expiry(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SET", "test_rs:et_noexp", "v"]).await?;
+    let r = client.cmd(&["EXPIRETIME", "test_rs:et_noexp"]).await?;
+    crate::assert_resp!(r, int(-1), "EXPIRETIME without expiry should return -1");
+    Ok(())
+}
+
+pub async fn test_expiretime_nonexistent(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["EXPIRETIME", "test_rs:nokey_et"]).await?;
+    crate::assert_resp!(r, int(-2), "EXPIRETIME nonexistent should return -2");
+    Ok(())
+}
+
+pub async fn test_pexpireat_basic(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SET", "test_rs:peat", "v"]).await?;
+    let r = client.cmd(&["PEXPIREAT", "test_rs:peat", "9999999999000"]).await?;
+    crate::assert_resp!(r, int(1), "PEXPIREAT should return 1");
+    let r = client.cmd(&["PEXPIRETIME", "test_rs:peat"]).await?;
+    assert!(matches!(&r, crate::RespType::Integer(n) if *n > 0), "PEXPIRETIME should be positive, got {:?}", r);
+    Ok(())
+}
+
+pub async fn test_pexpiretime_no_expiry(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SET", "test_rs:pet_noexp", "v"]).await?;
+    let r = client.cmd(&["PEXPIRETIME", "test_rs:pet_noexp"]).await?;
+    crate::assert_resp!(r, int(-1), "PEXPIRETIME without expiry");
+    Ok(())
+}
+
+pub async fn test_pexpiretime_nonexistent(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["PEXPIRETIME", "test_rs:nokey_pet"]).await?;
+    crate::assert_resp!(r, int(-2), "PEXPIRETIME nonexistent");
+    Ok(())
+}

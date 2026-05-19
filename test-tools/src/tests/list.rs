@@ -243,3 +243,111 @@ pub async fn test_lset(client: &mut RedisClient) -> Result<(), String> {
     crate::assert_resp!(r, bulk_str("x"), "LSET verify");
     Ok(())
 }
+
+pub async fn test_brpop_immediate(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["RPUSH", "test_rs:brpop_imm", "val"]).await?;
+    let now = tokio::time::Instant::now();
+    let r = client.cmd(&["BRPOP", "test_rs:brpop_imm", "1"]).await?;
+    let elapsed = now.elapsed();
+    if elapsed.as_millis() > 200 {
+        return Err(format!("BRPOP immediate: took {}ms, expected < 200ms", elapsed.as_millis()));
+    }
+    match &r {
+        RespType::Array(Some(items)) if items.len() == 2 => {
+            // Verify it popped from right (last element)
+            if let RespType::BulkString(Some(val)) = &items[1] {
+                if val.as_ref() == b"val" { Ok(()) }
+                else { Err(format!("BRPOP immediate: expected 'val', got {:?}", val)) }
+            } else { Err(format!("BRPOP immediate: unexpected format: {}", r)) }
+        }
+        _ => Err(format!("BRPOP immediate: expected Array of 2, got {}", r)),
+    }
+}
+
+pub async fn test_brpop_timeout(client: &mut RedisClient) -> Result<(), String> {
+    let now = tokio::time::Instant::now();
+    let r = client.cmd(&["BRPOP", "test_rs:brpop_empty", "1"]).await?;
+    let elapsed = now.elapsed();
+    if elapsed.as_millis() < 800 {
+        return Err(format!("BRPOP timeout: took {}ms, expected >= 800ms", elapsed.as_millis()));
+    }
+    crate::assert_resp!(r, null_array(), "BRPOP timeout");
+    Ok(())
+}
+
+pub async fn test_brpop_multi_key(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["RPUSH", "test_rs:brpop_multi", "winner"]).await?;
+    let r = client.cmd(&["BRPOP", "test_rs:brpop_empty", "test_rs:brpop_multi", "1"]).await?;
+    match &r {
+        RespType::Array(Some(items)) if items.len() == 2 => {
+            if let RespType::BulkString(Some(key)) = &items[0] {
+                if String::from_utf8_lossy(key) == "test_rs:brpop_multi" {
+                    return Ok(());
+                }
+            }
+            Err(format!("BRPOP multi-key: unexpected format: {}", r))
+        }
+        _ => Err(format!("BRPOP multi-key: expected Array of 2, got {}", r)),
+    }
+}
+
+pub async fn test_brpop_right_order(client: &mut RedisClient) -> Result<(), String> {
+    // BRPOP should pop from the right (last element)
+    let _ = client.cmd(&["RPUSH", "test_rs:brpop_right", "first", "second", "third"]).await?;
+    let r = client.cmd(&["BRPOP", "test_rs:brpop_right", "1"]).await?;
+    match &r {
+        RespType::Array(Some(items)) if items.len() == 2 => {
+            if let RespType::BulkString(Some(val)) = &items[1] {
+                if val.as_ref() == b"third" { Ok(()) }
+                else { Err(format!("BRPOP right order: expected 'third', got {:?}", val)) }
+            } else { Err(format!("BRPOP right order: unexpected format: {}", r)) }
+        }
+        _ => Err(format!("BRPOP right order: expected Array of 2, got {}", r)),
+    }
+}
+
+pub async fn test_lmove_left_to_right(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["RPUSH", "test_rs:lms", "a", "b", "c"]).await?;
+    let r = client.cmd(&["LMOVE", "test_rs:lms", "test_rs:lmd", "LEFT", "RIGHT"]).await?;
+    crate::assert_resp!(r, bulk_str("a"), "LMOVE pop left push right");
+    let r = client.cmd(&["LRANGE", "test_rs:lmd", "0", "-1"]).await?;
+    crate::assert_resp!(r, arr_of_bulks(&["a"]), "LMOVE dest verify");
+    Ok(())
+}
+
+pub async fn test_lmove_right_to_left(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["RPUSH", "test_rs:lms2", "x", "y", "z"]).await?;
+    let r = client.cmd(&["LMOVE", "test_rs:lms2", "test_rs:lmd2", "RIGHT", "LEFT"]).await?;
+    crate::assert_resp!(r, bulk_str("z"), "LMOVE pop right push left");
+    Ok(())
+}
+
+pub async fn test_lmove_empty_key(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["LMOVE", "test_rs:nokey", "test_rs:d", "LEFT", "RIGHT"]).await?;
+    crate::assert_resp!(r, null_bulk(), "LMOVE empty key");
+    Ok(())
+}
+
+pub async fn test_brpoplpush_basic(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["RPUSH", "test_rs:blps", "a", "b"]).await?;
+    let r = client.cmd(&["BRPOPLPUSH", "test_rs:blps", "test_rs:blpd", "1"]).await?;
+    crate::assert_resp!(r, bulk_str("b"), "BRPOPLPUSH basic pop");
+    let r = client.cmd(&["LRANGE", "test_rs:blpd", "0", "-1"]).await?;
+    crate::assert_resp!(r, arr_of_bulks(&["b"]), "BRPOPLPUSH dest verify");
+    Ok(())
+}
+
+pub async fn test_lpos_basic(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["RPUSH", "test_rs:lposk", "a", "b", "a", "c"]).await?;
+    let r = client.cmd(&["LPOS", "test_rs:lposk", "a"]).await?;
+    crate::assert_resp!(r, int(0), "LPOS first a at index 0");
+    Ok(())
+}
+
+pub async fn test_lpos_with_count(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["LPOS", "test_rs:lposk", "a", "COUNT", "2"]).await?;
+    match &r {
+        crate::RespType::Array(Some(items)) if items.len() == 2 => Ok(()),
+        _ => Err(format!("LPOS COUNT 2: expected Array of 2, got {}", r)),
+    }
+}

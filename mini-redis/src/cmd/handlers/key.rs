@@ -128,6 +128,20 @@ pub fn handle_renamenx(key: &str, newkey: &str) -> RespType {
     })
 }
 
+pub fn handle_touch(keys: &[String]) -> RespType {
+    with_db(|db| {
+        let mut count = 0i64;
+        for key in keys {
+            if let Some(entry) = db.get_mut(key) {
+                if !entry.expiry.is_some_and(|exp| Instant::now() >= exp) {
+                    count += 1;
+                }
+            }
+        }
+        RespType::Integer(count)
+    })
+}
+
 pub fn handle_randomkey() -> RespType {
     with_db(|db| {
         let valid: Vec<&String> = db

@@ -523,19 +523,42 @@ tree_tests! {
             "GETRANGE"            => tests::string::test_getrange,
             "SETRANGE"            => tests::string::test_setrange,
             "MSETNX"              => tests::string::test_msetnx,
+            "SETNX new key"       => tests::string::test_setnx_new,
+            "SETNX exists"        => tests::string::test_setnx_exists,
+            "SETNX wrong args"    => tests::string::test_setnx_wrong_args,
+            "GETEX basic"         => tests::string::test_getex_basic,
+            "GETEX with PX"       => tests::string::test_getex_with_px,
+            "GETEX PERSIST"       => tests::string::test_getex_with_persist,
+            "GETEX nonexistent"   => tests::string::test_getex_nonexistent,
+            "GETDEL basic"        => tests::string::test_getdel_basic,
+            "GETDEL nonexistent"  => tests::string::test_getdel_nonexistent,
+            "BITFIELD GET SET"    => tests::string::test_bitfield_get_set,
+            "BITFIELD_RO"         => tests::string::test_bitfield_ro,
         ],
         ("EXPIRE", "Stage 7") [
-            "EX expiry"           => tests::expiry::test_ex_actual_expiry,
-            "PX expiry"           => tests::expiry::test_px_actual_expiry,
-            "Background expiry"   => tests::expiry::test_expiry_background_cleanup,
-            "EXPIRE basic"        => tests::expiry::test_expire_basic,
-            "EXPIRE nonexistent"  => tests::expiry::test_expire_nonexistent,
-            "TTL with expiry"     => tests::expiry::test_ttl_with_expiry,
-            "TTL no expiry"       => tests::expiry::test_ttl_no_expiry,
-            "TTL nonexistent"     => tests::expiry::test_ttl_nonexistent,
-            "PERSIST basic"       => tests::expiry::test_persist_basic,
-            "PERSIST nonexistent" => tests::expiry::test_persist_nonexistent,
-            "PERSIST no expiry"   => tests::expiry::test_persist_no_expiry,
+            "EX expiry"                  => tests::expiry::test_ex_actual_expiry,
+            "PX expiry"                  => tests::expiry::test_px_actual_expiry,
+            "Background expiry"          => tests::expiry::test_expiry_background_cleanup,
+            "EXPIRE basic"               => tests::expiry::test_expire_basic,
+            "EXPIRE nonexistent"         => tests::expiry::test_expire_nonexistent,
+            "TTL with expiry"            => tests::expiry::test_ttl_with_expiry,
+            "TTL no expiry"              => tests::expiry::test_ttl_no_expiry,
+            "TTL nonexistent"            => tests::expiry::test_ttl_nonexistent,
+            "PERSIST basic"              => tests::expiry::test_persist_basic,
+            "PERSIST nonexistent"        => tests::expiry::test_persist_nonexistent,
+            "PERSIST no expiry"          => tests::expiry::test_persist_no_expiry,
+            "PEXPIRE basic"              => tests::expiry::test_pexpire,
+            "PEXPIRE nonexistent"        => tests::expiry::test_pexpire_nonexistent,
+            "PTTL with expiry"           => tests::expiry::test_pttl_with_expiry,
+            "PTTL no expiry"             => tests::expiry::test_pttl_no_expiry,
+            "PTTL nonexistent"           => tests::expiry::test_pttl_nonexistent,
+            "EXPIREAT basic"             => tests::expiry::test_expireat_basic,
+            "EXPIREAT nonexistent"       => tests::expiry::test_expireat_nonexistent,
+            "EXPIRETIME no expiry"       => tests::expiry::test_expiretime_no_expiry,
+            "EXPIRETIME nonexistent"     => tests::expiry::test_expiretime_nonexistent,
+            "PEXPIREAT basic"            => tests::expiry::test_pexpireat_basic,
+            "PEXPIRETIME no expiry"      => tests::expiry::test_pexpiretime_no_expiry,
+            "PEXPIRETIME nonexistent"    => tests::expiry::test_pexpiretime_nonexistent,
         ],
         ("WRONGTYPE", "Edge Cases") [
             "GET on list"         => tests::wrongtype::test_wrongtype_get_on_list,
@@ -557,6 +580,7 @@ tree_tests! {
             "INFO"                => tests::server::test_info,
             "CONFIG GET dir"      => tests::server::test_config_get_dir,
             "CONFIG GET unknown"  => tests::server::test_config_get_unknown,
+            "TIME"                => tests::server::test_time,
         ],
     ],
     ("Key", "Key") [
@@ -590,6 +614,10 @@ tree_tests! {
         ],
         ("RANDOMKEY", "New") [
             "RANDOMKEY"            => tests::key::test_randomkey,
+        ],
+        ("TOUCH", "New") [
+            "TOUCH basic"          => tests::key::test_touch_basic,
+            "TOUCH multiple"       => tests::key::test_touch_multiple,
         ],
         ("SCAN", "New") [
             "SCAN empty"             => tests::scan::test_scan_empty,
@@ -659,6 +687,24 @@ tree_tests! {
             "BLPOP multi key"       => tests::blpop::test_blpop_multi_key,
             "BLPOP wakeup"          => tests::blpop::test_blpop_wakeup,
             "BLPOP zero timeout with data" => tests::blpop::test_blpop_zero_timeout_with_data,
+        ],
+        ("BRPOP", "New") [
+            "BRPOP immediate"       => tests::list::test_brpop_immediate,
+            "BRPOP timeout"         => tests::list::test_brpop_timeout,
+            "BRPOP multi key"       => tests::list::test_brpop_multi_key,
+            "BRPOP right order"     => tests::list::test_brpop_right_order,
+        ],
+        ("LMOVE", "New") [
+            "LMOVE left to right"   => tests::list::test_lmove_left_to_right,
+            "LMOVE right to left"   => tests::list::test_lmove_right_to_left,
+            "LMOVE empty key"       => tests::list::test_lmove_empty_key,
+        ],
+        ("BRPOPLPUSH", "New") [
+            "BRPOPLPUSH basic"      => tests::list::test_brpoplpush_basic,
+        ],
+        ("LPOS", "New") [
+            "LPOS basic"            => tests::list::test_lpos_basic,
+            "LPOS with COUNT"       => tests::list::test_lpos_with_count,
         ],
     ],
     ("Stream", "Stream") [
@@ -756,6 +802,15 @@ tree_tests! {
         ("HSETNX", "New") [
             "HSETNX new"            => tests::hash::test_hsetnx,
         ],
+        ("HRANDFIELD", "New") [
+            "HRANDFIELD basic"      => tests::hash::test_hrandfield_basic,
+            "HRANDFIELD count"      => tests::hash::test_hrandfield_count,
+            "HRANDFIELD nonexistent" => tests::hash::test_hrandfield_nonexistent,
+        ],
+        ("HSTRLEN", "New") [
+            "HSTRLEN basic"         => tests::hash::test_hstrlen_basic,
+            "HSTRLEN nonexistent"   => tests::hash::test_hstrlen_nonexistent,
+        ],
         ("HSCAN", "New") [
             "HSCAN basic"           => tests::scan::test_hscan_basic,
             "HSCAN MATCH"           => tests::scan::test_hscan_match,
@@ -808,6 +863,15 @@ tree_tests! {
         ],
         ("SMOVE", "New") [
             "SMOVE"                 => tests::set::test_smove,
+        ],
+        ("SUNIONSTORE", "New") [
+            "SUNIONSTORE"           => tests::set::test_sunionstore,
+        ],
+        ("SINTERSTORE", "New") [
+            "SINTERSTORE"           => tests::set::test_sinterstore,
+        ],
+        ("SDIFFSTORE", "New") [
+            "SDIFFSTORE"            => tests::set::test_sdiffstore,
         ],
         ("SSCAN", "New") [
             "SSCAN basic"           => tests::scan::test_sscan_basic,
@@ -896,6 +960,13 @@ tree_tests! {
         ],
         ("ZDIFFSTORE", "New") [
             "ZDIFFSTORE basic"          => tests::zset::test_zdiffstore_basic,
+        ],
+        ("ZPOPMIN", "New") [
+            "ZPOPMIN basic"             => tests::zset::test_zpopmin,
+            "ZPOPMIN empty"             => tests::zset::test_zpopmin_empty,
+        ],
+        ("ZPOPMAX", "New") [
+            "ZPOPMAX basic"             => tests::zset::test_zpopmax,
         ],
         ("ZSCAN", "New") [
             "ZSCAN basic"           => tests::scan::test_zscan_basic,

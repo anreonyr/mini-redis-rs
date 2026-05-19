@@ -1,4 +1,4 @@
-use super::super::types::{CmdError, ParsedCmd, wrong_arg_count};
+use super::super::types::{BitFieldSub, CmdError, ParsedCmd, wrong_arg_count};
 use std::time::Duration;
 
 pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
@@ -127,6 +127,54 @@ pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
             }
             Ok(ParsedCmd::Msetnx { pairs })
         }
+        "SETNX" => {
+            if args.len() != 2 {
+                return Err(wrong_arg_count("setnx"));
+            }
+            let mut iter = args.into_iter();
+            let key = iter.next().unwrap();
+            let value = iter.next().unwrap();
+            Ok(ParsedCmd::Setnx { key, value })
+        }
+        "GETEX" => {
+            if args.is_empty() || args.len() > 3 {
+                return Err(wrong_arg_count("getex"));
+            }
+            let mut iter = args.into_iter();
+            let key = iter.next().unwrap();
+            let expiry = match iter.next() {
+                Some(flag) => match flag.as_str() {
+                    "EX" => {
+                        let val = iter.next().ok_or_else(|| wrong_arg_count("getex"))?;
+                        Some(Duration::from_secs(val.parse().map_err(|_| CmdError::InvalidInteger)?))
+                    }
+                    "PX" => {
+                        let val = iter.next().ok_or_else(|| wrong_arg_count("getex"))?;
+                        Some(Duration::from_millis(val.parse().map_err(|_| CmdError::InvalidInteger)?))
+                    }
+                    "EXAT" => {
+                        let val = iter.next().ok_or_else(|| wrong_arg_count("getex"))?;
+                        let ts: u64 = val.parse().map_err(|_| CmdError::InvalidInteger)?;
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs();
+                        Some(Duration::from_secs(ts.saturating_sub(now)))
+                    }
+                    "PERSIST" => Some(Duration::ZERO),
+                    _ => return Err(CmdError::SyntaxError),
+                },
+                None => None,
+            };
+            if iter.next().is_some() {
+                return Err(wrong_arg_count("getex"));
+            }
+            Ok(ParsedCmd::Getex { key, expiry })
+        }
+        "GETDEL" => {
+            let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("getdel"))?;
+            Ok(ParsedCmd::Getdel { key })
+        }
         // Bitmap
         "GETBIT" => {
             if args.len() != 2 {
@@ -180,7 +228,69 @@ pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
             let end = iter.next().map(|s| s.parse::<i64>().map_err(|_| CmdError::InvalidInteger)).transpose()?;
             Ok(ParsedCmd::BitPos { key, bit, start, end })
         }
+        "BITFIELD" | "BITFIELD_RO" => {
+            let readonly = cmd == "BITFIELD_RO";
+            if args.len() < 1 {
+                return Err(wrong_arg_count(cmd));
+            }
+            let mut iter = args.into_iter();
+            let key = iter.next().unwrap();
+            let mut sub_commands = Vec::new();
+            while let Some(token) = iter.next() {
+                match token.to_uppercase().as_str() {
+                    "GET" => {
+                        let encoding = iter.next().ok_or_else(|| wrong_arg_count("bitfield"))?;
+                        let offset_str = iter.next().ok_or_else(|| wrong_arg_count("bitfield"))?;
+                        let offset = parse_bitfield_offset(&offset_str)?;
+                        sub_commands.push(BitFieldSub::Get { encoding, offset });
+                    }
+                    "SET" => {
+                        let encoding = iter.next().ok_or_else(|| wrong_arg_count("bitfield"))?;
+                        let offset_str = iter.next().ok_or_else(|| wrong_arg_count("bitfield"))?;
+                        let offset = parse_bitfield_offset(&offset_str)?;
+                        let value = iter.next().ok_or_else(|| wrong_arg_count("bitfield"))?
+                            .parse::<i64>().map_err(|_| CmdError::InvalidInteger)?;
+                        sub_commands.push(BitFieldSub::Set { encoding, offset, value });
+                    }
+                    "INCRBY" => {
+                        let encoding = iter.next().ok_or_else(|| wrong_arg_count("bitfield"))?;
+                        let offset_str = iter.next().ok_or_else(|| wrong_arg_count("bitfield"))?;
+                        let offset = parse_bitfield_offset(&offset_str)?;
+                        let increment = iter.next().ok_or_else(|| wrong_arg_count("bitfield"))?
+                            .parse::<i64>().map_err(|_| CmdError::InvalidInteger)?;
+                        sub_commands.push(BitFieldSub::Incrby { encoding, offset, increment });
+                    }
+                    "OVERFLOW" => {
+                        let behavior = iter.next().ok_or_else(|| wrong_arg_count("bitfield"))?;
+                        let upper = behavior.to_uppercase();
+                        if !matches!(upper.as_str(), "WRAP" | "SAT" | "FAIL") {
+                            return Err(CmdError::SyntaxError);
+                        }
+                        sub_commands.push(BitFieldSub::Overflow { behavior: upper });
+                    }
+                    _ => return Err(CmdError::SyntaxError),
+                }
+            }
+            if sub_commands.is_empty() {
+                return Err(wrong_arg_count("bitfield"));
+            }
+            if readonly {
+                Ok(ParsedCmd::BitFieldRo { key, sub_commands })
+            } else {
+                Ok(ParsedCmd::BitField { key, sub_commands })
+            }
+        }
         _ => Err(CmdError::UnknownCommand),
+    }
+}
+
+/// Parse a BITFIELD offset: plain integer like "0" or encoded like "#3" (multiplied by encoding width).
+fn parse_bitfield_offset(s: &str) -> Result<i64, CmdError> {
+    if let Some(suffix) = s.strip_prefix('#') {
+        let multiplier: i64 = suffix.parse().map_err(|_| CmdError::InvalidInteger)?;
+        Ok(multiplier)
+    } else {
+        s.parse().map_err(|_| CmdError::InvalidInteger)
     }
 }
 

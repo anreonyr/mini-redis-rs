@@ -9,6 +9,15 @@ pub enum XGroupSub {
     SetId { group: String, id: String },
 }
 
+/// A single BITFIELD sub-command.
+#[derive(Clone, Debug, PartialEq)]
+pub enum BitFieldSub {
+    Get { encoding: String, offset: i64 },
+    Set { encoding: String, offset: i64, value: i64 },
+    Incrby { encoding: String, offset: i64, increment: i64 },
+    Overflow { behavior: String }, // WRAP | SAT | FAIL
+}
+
 /// A fully validated Redis command with arguments extracted.
 /// All arguments have been parsed into their native types at this point.
 #[derive(Clone, Debug, PartialEq)]
@@ -92,6 +101,10 @@ pub enum ParsedCmd {
     },
     Flushdb,
     Blpop {
+        keys: Vec<String>,
+        timeout: u64,
+    },
+    Brpop {
         keys: Vec<String>,
         timeout: u64,
     },
@@ -325,6 +338,27 @@ pub enum ParsedCmd {
     Persist {
         key: String,
     },
+    Pexpire {
+        key: String,
+        milliseconds: u64,
+    },
+    Pttl {
+        key: String,
+    },
+    Pexpireat {
+        key: String,
+        timestamp_ms: u64,
+    },
+    Expireat {
+        key: String,
+        timestamp: u64,
+    },
+    Expiretime {
+        key: String,
+    },
+    Pexpiretime {
+        key: String,
+    },
     // More String
     Getset {
         key: String,
@@ -343,6 +377,17 @@ pub enum ParsedCmd {
     Msetnx {
         pairs: Vec<(String, String)>,
     },
+    Setnx {
+        key: String,
+        value: String,
+    },
+    Getex {
+        key: String,
+        expiry: Option<Duration>,
+    },
+    Getdel {
+        key: String,
+    },
     // More List
     Rpoplpush {
         source: String,
@@ -352,6 +397,31 @@ pub enum ParsedCmd {
         key: String,
         index: i64,
         value: String,
+    },
+    Brpoplpush {
+        source: String,
+        destination: String,
+        timeout: u64,
+    },
+    Lmove {
+        source: String,
+        destination: String,
+        from_where: String,
+        to_where: String,
+    },
+    Blmove {
+        source: String,
+        destination: String,
+        from_where: String,
+        to_where: String,
+        timeout: u64,
+    },
+    Lpos {
+        key: String,
+        element: String,
+        rank: Option<i64>,
+        count: Option<u64>,
+        maxlen: Option<u64>,
     },
     // More Hash
     Hincrby {
@@ -369,11 +439,32 @@ pub enum ParsedCmd {
         field: String,
         value: String,
     },
+    Hrandfield {
+        key: String,
+        count: Option<i64>,
+        withvalues: bool,
+    },
+    Hstrlen {
+        key: String,
+        field: String,
+    },
     // More Set
     Smove {
         source: String,
         destination: String,
         member: String,
+    },
+    Sunionstore {
+        dest: String,
+        keys: Vec<String>,
+    },
+    Sinterstore {
+        dest: String,
+        keys: Vec<String>,
+    },
+    Sdiffstore {
+        dest: String,
+        keys: Vec<String>,
     },
     // More ZSet
     Zremrangebyrank {
@@ -392,6 +483,22 @@ pub enum ParsedCmd {
         min: String,
         withscores: bool,
         limit: Option<(usize, usize)>,
+    },
+    Zpopmin {
+        key: String,
+        count: Option<usize>,
+    },
+    Zpopmax {
+        key: String,
+        count: Option<usize>,
+    },
+    Bzpopmin {
+        keys: Vec<String>,
+        timeout: u64,
+    },
+    Bzpopmax {
+        keys: Vec<String>,
+        timeout: u64,
     },
     // More Key
     Rename {
@@ -541,6 +648,14 @@ pub enum ParsedCmd {
         start: Option<i64>,
         end: Option<i64>,
     },
+    BitField {
+        key: String,
+        sub_commands: Vec<BitFieldSub>,
+    },
+    BitFieldRo {
+        key: String,
+        sub_commands: Vec<BitFieldSub>,
+    },
     // Scan
     Scan {
         cursor: u64,
@@ -566,6 +681,12 @@ pub enum ParsedCmd {
         match_pattern: Option<String>,
         count: u64,
     },
+    // Time/Server
+    Time,
+    // Key Touch
+    Touch {
+        keys: Vec<String>,
+    },
 }
 
 impl ParsedCmd {
@@ -588,6 +709,9 @@ impl ParsedCmd {
             ParsedCmd::Getrange { .. } => "GETRANGE",
             ParsedCmd::Setrange { .. } => "SETRANGE",
             ParsedCmd::Msetnx { .. } => "MSETNX",
+            ParsedCmd::Setnx { .. } => "SETNX",
+            ParsedCmd::Getex { .. } => "GETEX",
+            ParsedCmd::Getdel { .. } => "GETDEL",
             ParsedCmd::Rpush { .. } => "RPUSH",
             ParsedCmd::Lpush { .. } => "LPUSH",
             ParsedCmd::Lrange { .. } => "LRANGE",
@@ -599,7 +723,12 @@ impl ParsedCmd {
             ParsedCmd::Ltrim { .. } => "LTRIM",
             ParsedCmd::Rpoplpush { .. } => "RPOPLPUSH",
             ParsedCmd::Lset { .. } => "LSET",
+            ParsedCmd::Brpoplpush { .. } => "BRPOPLPUSH",
+            ParsedCmd::Lmove { .. } => "LMOVE",
+            ParsedCmd::Blmove { .. } => "BLMOVE",
+            ParsedCmd::Lpos { .. } => "LPOS",
             ParsedCmd::Blpop { .. } => "BLPOP",
+            ParsedCmd::Brpop { .. } => "BRPOP",
             ParsedCmd::Command { .. } => "COMMAND",
             ParsedCmd::Flushdb => "FLUSHDB",
             ParsedCmd::Info { .. } => "INFO",
@@ -629,6 +758,8 @@ impl ParsedCmd {
             ParsedCmd::Hincrby { .. } => "HINCRBY",
             ParsedCmd::Hincrbyfloat { .. } => "HINCRBYFLOAT",
             ParsedCmd::Hsetnx { .. } => "HSETNX",
+            ParsedCmd::Hrandfield { .. } => "HRANDFIELD",
+            ParsedCmd::Hstrlen { .. } => "HSTRLEN",
             ParsedCmd::Sadd { .. } => "SADD",
             ParsedCmd::Smembers { .. } => "SMEMBERS",
             ParsedCmd::Sismember { .. } => "SISMEMBER",
@@ -640,6 +771,9 @@ impl ParsedCmd {
             ParsedCmd::Sinter { .. } => "SINTER",
             ParsedCmd::Sdiff { .. } => "SDIFF",
             ParsedCmd::Smove { .. } => "SMOVE",
+            ParsedCmd::Sunionstore { .. } => "SUNIONSTORE",
+            ParsedCmd::Sinterstore { .. } => "SINTERSTORE",
+            ParsedCmd::Sdiffstore { .. } => "SDIFFSTORE",
             ParsedCmd::Zadd { .. } => "ZADD",
             ParsedCmd::Zrange { .. } => "ZRANGE",
             ParsedCmd::Zrank { .. } => "ZRANK",
@@ -654,6 +788,10 @@ impl ParsedCmd {
             ParsedCmd::Zremrangebyrank { .. } => "ZREMRANGEBYRANK",
             ParsedCmd::Zremrangebyscore { .. } => "ZREMRANGEBYSCORE",
             ParsedCmd::Zrevrangebyscore { .. } => "ZREVRANGEBYSCORE",
+            ParsedCmd::Zpopmin { .. } => "ZPOPMIN",
+            ParsedCmd::Zpopmax { .. } => "ZPOPMAX",
+            ParsedCmd::Bzpopmin { .. } => "BZPOPMIN",
+            ParsedCmd::Bzpopmax { .. } => "BZPOPMAX",
             ParsedCmd::Del { .. } => "DEL",
             ParsedCmd::Exists { .. } => "EXISTS",
             ParsedCmd::Type { .. } => "TYPE",
@@ -662,6 +800,12 @@ impl ParsedCmd {
             ParsedCmd::Expire { .. } => "EXPIRE",
             ParsedCmd::Ttl { .. } => "TTL",
             ParsedCmd::Persist { .. } => "PERSIST",
+            ParsedCmd::Pexpire { .. } => "PEXPIRE",
+            ParsedCmd::Pttl { .. } => "PTTL",
+            ParsedCmd::Pexpireat { .. } => "PEXPIREAT",
+            ParsedCmd::Expireat { .. } => "EXPIREAT",
+            ParsedCmd::Expiretime { .. } => "EXPIRETIME",
+            ParsedCmd::Pexpiretime { .. } => "PEXPIRETIME",
             ParsedCmd::Rename { .. } => "RENAME",
             ParsedCmd::Renamenx { .. } => "RENAMENX",
             ParsedCmd::Randomkey => "RANDOMKEY",
@@ -693,6 +837,8 @@ impl ParsedCmd {
             ParsedCmd::BitCount { .. } => "BITCOUNT",
             ParsedCmd::BitOp { .. } => "BITOP",
             ParsedCmd::BitPos { .. } => "BITPOS",
+            ParsedCmd::BitField { .. } => "BITFIELD",
+            ParsedCmd::BitFieldRo { .. } => "BITFIELD_RO",
             ParsedCmd::Scan { .. } => "SCAN",
             ParsedCmd::Sscan { .. } => "SSCAN",
             ParsedCmd::Hscan { .. } => "HSCAN",
@@ -703,6 +849,8 @@ impl ParsedCmd {
             ParsedCmd::ZUnionStore { .. } => "ZUNIONSTORE",
             ParsedCmd::ZDiff { .. } => "ZDIFF",
             ParsedCmd::ZDiffStore { .. } => "ZDIFFSTORE",
+            ParsedCmd::Time => "TIME",
+            ParsedCmd::Touch { .. } => "TOUCH",
         }
     }
 }

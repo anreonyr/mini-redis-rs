@@ -346,3 +346,37 @@ pub async fn test_zdiff_withscores(client: &mut RedisClient) -> Result<(), Strin
         _ => Err(format!("ZDIFF WITHSCORES: expected Array, got {}", r)),
     }
 }
+
+pub async fn test_zpopmin(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["ZADD", "test_rs:zpm", "10", "a", "20", "b", "30", "c"]).await?;
+    let r = client.cmd(&["ZPOPMIN", "test_rs:zpm"]).await?;
+    match &r {
+        crate::RespType::Array(Some(items)) if items.len() == 2 => {
+            if let crate::RespType::BulkString(Some(m)) = &items[0] {
+                if m.as_ref() == b"a" { Ok(()) }
+                else { Err(format!("ZPOPMIN: expected 'a', got {:?}", m)) }
+            } else { Err(format!("ZPOPMIN: unexpected: {}", r)) }
+        }
+        _ => Err(format!("ZPOPMIN: expected Array of 2, got {}", r)),
+    }
+}
+
+pub async fn test_zpopmax(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["ZADD", "test_rs:zpmx", "10", "a", "20", "b", "30", "c"]).await?;
+    let r = client.cmd(&["ZPOPMAX", "test_rs:zpmx"]).await?;
+    match &r {
+        crate::RespType::Array(Some(items)) if items.len() == 2 => {
+            if let crate::RespType::BulkString(Some(m)) = &items[0] {
+                if m.as_ref() == b"c" { Ok(()) }
+                else { Err(format!("ZPOPMAX: expected 'c', got {:?}", m)) }
+            } else { Err(format!("ZPOPMAX: unexpected: {}", r)) }
+        }
+        _ => Err(format!("ZPOPMAX: expected Array of 2, got {}", r)),
+    }
+}
+
+pub async fn test_zpopmin_empty(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["ZPOPMIN", "test_rs:nokey_zpm"]).await?;
+    crate::assert_resp!(r, empty_array(), "ZPOPMIN empty key");
+    Ok(())
+}

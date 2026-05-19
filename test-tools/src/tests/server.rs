@@ -27,3 +27,23 @@ pub async fn test_config_get_unknown(client: &mut RedisClient) -> Result<(), Str
     crate::assert_resp!(r, empty_array(), "CONFIG GET unknown");
     Ok(())
 }
+
+pub async fn test_time(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["TIME"]).await?;
+    match &r {
+        mini_redis::protocol::resp::RespType::Array(Some(items)) if items.len() == 2 => {
+            // Both elements should be BulkString with numeric values
+            for item in items {
+                match item {
+                    mini_redis::protocol::resp::RespType::BulkString(Some(b)) => {
+                        let s = String::from_utf8_lossy(b);
+                        s.parse::<u64>().map_err(|_| format!("TIME: non-numeric value: {}", s))?;
+                    }
+                    _ => return Err(format!("TIME: expected BulkString elements, got {}", item)),
+                }
+            }
+            Ok(())
+        }
+        _ => Err(format!("TIME: expected Array of 2, got {}", r)),
+    }
+}

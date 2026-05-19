@@ -75,6 +75,9 @@ async fn dispatch_match<'a>(
             handlers::handle_setrange(&key, offset, &value)
         }
         ParsedCmd::Msetnx { pairs } => handlers::handle_msetnx(&pairs),
+        ParsedCmd::Setnx { key, value } => handlers::handle_setnx(&key, &value),
+        ParsedCmd::Getex { key, expiry } => handlers::handle_getex(&key, expiry),
+        ParsedCmd::Getdel { key } => handlers::handle_getdel(&key),
         ParsedCmd::Rpush { key, values } => handlers::handle_rpush(&key, &values),
         ParsedCmd::Lpush { key, values } => handlers::handle_lpush(&key, &values),
         ParsedCmd::Lrange { key, start, stop } => handlers::handle_lrange(&key, start, stop),
@@ -88,7 +91,20 @@ async fn dispatch_match<'a>(
             handlers::handle_rpoplpush(&source, &destination)
         }
         ParsedCmd::Lset { key, index, value } => handlers::handle_lset(&key, index, &value),
+        ParsedCmd::Brpoplpush { source, destination, timeout } => {
+            handlers::handle_brpoplpush(&source, &destination, timeout).await
+        }
+        ParsedCmd::Lmove { source, destination, from_where, to_where } => {
+            handlers::handle_lmove(&source, &destination, &from_where, &to_where)
+        }
+        ParsedCmd::Blmove { source, destination, from_where, to_where, timeout } => {
+            handlers::handle_blmove(&source, &destination, &from_where, &to_where, timeout).await
+        }
+        ParsedCmd::Lpos { key, element, rank, count, maxlen } => {
+            handlers::handle_lpos(&key, &element, rank, count, maxlen)
+        }
         ParsedCmd::Blpop { keys, timeout } => handlers::handle_blpop(&keys, timeout).await,
+        ParsedCmd::Brpop { keys, timeout } => handlers::handle_brpop(&keys, timeout).await,
         ParsedCmd::Command { subcommand, name } => handlers::handle_command(subcommand, name),
         ParsedCmd::Flushdb => handlers::handle_flushdb(),
         ParsedCmd::Info { section } => handlers::handle_info(section),
@@ -154,6 +170,10 @@ async fn dispatch_match<'a>(
             handlers::handle_hincrbyfloat(&key, &field, incr)
         }
         ParsedCmd::Hsetnx { key, field, value } => handlers::handle_hsetnx(&key, &field, &value),
+        ParsedCmd::Hrandfield { key, count, withvalues } => {
+            handlers::handle_hrandfield(&key, count, withvalues)
+        }
+        ParsedCmd::Hstrlen { key, field } => handlers::handle_hstrlen(&key, &field),
         // Set
         ParsedCmd::Sadd { key, members } => handlers::handle_sadd(&key, &members),
         ParsedCmd::Smembers { key } => handlers::handle_smembers(&key),
@@ -170,6 +190,9 @@ async fn dispatch_match<'a>(
             destination,
             member,
         } => handlers::handle_smove(&source, &destination, &member),
+        ParsedCmd::Sunionstore { dest, keys } => handlers::handle_sunionstore(&dest, &keys),
+        ParsedCmd::Sinterstore { dest, keys } => handlers::handle_sinterstore(&dest, &keys),
+        ParsedCmd::Sdiffstore { dest, keys } => handlers::handle_sdiffstore(&dest, &keys),
         // Sorted Set
         ParsedCmd::Zadd { key, members } => handlers::handle_zadd(&key, &members),
         ParsedCmd::Zrange {
@@ -203,6 +226,10 @@ async fn dispatch_match<'a>(
         ParsedCmd::Zremrangebyrank { key, start, stop } => {
             handlers::handle_zremrangebyrank(&key, start, stop)
         }
+        ParsedCmd::Zpopmin { key, count } => handlers::handle_zpopmin(&key, count),
+        ParsedCmd::Zpopmax { key, count } => handlers::handle_zpopmax(&key, count),
+        ParsedCmd::Bzpopmin { keys, timeout } => handlers::handle_bzpopmin(&keys, timeout).await,
+        ParsedCmd::Bzpopmax { keys, timeout } => handlers::handle_bzpopmax(&keys, timeout).await,
         ParsedCmd::Zremrangebyscore { key, min, max } => {
             handlers::handle_zremrangebyscore(&key, &min, &max)
         }
@@ -258,10 +285,18 @@ async fn dispatch_match<'a>(
         ParsedCmd::Expire { key, seconds } => handlers::handle_expire(&key, seconds),
         ParsedCmd::Ttl { key } => handlers::handle_ttl(&key),
         ParsedCmd::Persist { key } => handlers::handle_persist(&key),
+        ParsedCmd::Pexpire { key, milliseconds } => handlers::handle_pexpire(&key, milliseconds),
+        ParsedCmd::Pttl { key } => handlers::handle_pttl(&key),
+        ParsedCmd::Pexpireat { key, timestamp_ms } => handlers::handle_pexpireat(&key, timestamp_ms),
+        ParsedCmd::Expireat { key, timestamp } => handlers::handle_expireat(&key, timestamp),
+        ParsedCmd::Expiretime { key } => handlers::handle_expiretime(&key),
+        ParsedCmd::Pexpiretime { key } => handlers::handle_pexpiretime(&key),
         // More Key
         ParsedCmd::Rename { key, newkey } => handlers::handle_rename(&key, &newkey),
         ParsedCmd::Renamenx { key, newkey } => handlers::handle_renamenx(&key, &newkey),
         ParsedCmd::Randomkey => handlers::handle_randomkey(),
+        ParsedCmd::Touch { keys } => handlers::handle_touch(&keys),
+        ParsedCmd::Time => handlers::handle_time(),
         ParsedCmd::Save => handlers::handle_save().await,
         ParsedCmd::Bgsave => handlers::handle_bgsave(),
         ParsedCmd::Shutdown => {
@@ -310,6 +345,8 @@ async fn dispatch_match<'a>(
         ParsedCmd::BitCount { key, start, end } => handlers::handle_bitcount(&key, start, end),
         ParsedCmd::BitOp { op, dest, keys } => handlers::handle_bitop(&op, &dest, &keys),
         ParsedCmd::BitPos { key, bit, start, end } => handlers::handle_bitpos(&key, bit, start, end),
+        ParsedCmd::BitField { key, sub_commands } => handlers::handle_bitfield(&key, &sub_commands),
+        ParsedCmd::BitFieldRo { key, sub_commands } => handlers::handle_bitfield_ro(&key, &sub_commands),
         // Scan
         ParsedCmd::Scan { cursor, match_pattern, count, type_filter } => {
             handlers::handle_scan(cursor, match_pattern, count, type_filter)

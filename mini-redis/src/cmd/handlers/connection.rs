@@ -332,3 +332,15 @@ pub fn handle_hello() -> RespType {
     }
     RespType::Array(Some(arr))
 }
+
+pub fn handle_time() -> RespType {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = now.as_secs();
+    let micros = now.subsec_micros() as u64;
+    RespType::Array(Some(vec![
+        RespType::BulkString(Some(Bytes::copy_from_slice(secs.to_string().as_bytes()))),
+        RespType::BulkString(Some(Bytes::copy_from_slice(micros.to_string().as_bytes()))),
+    ]))
+}

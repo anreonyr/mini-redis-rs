@@ -160,3 +160,29 @@ pub async fn test_smove(client: &mut RedisClient) -> Result<(), String> {
     crate::assert_resp!(r, int(1), "SMOVE added to dest");
     Ok(())
 }
+
+pub async fn test_sunionstore(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["SADD", "test_rs:sus1", "a", "b"]).await?;
+    let _ = client.cmd(&["SADD", "test_rs:sus2", "b", "c"]).await?;
+    let r = client.cmd(&["SUNIONSTORE", "test_rs:sus_dest", "test_rs:sus1", "test_rs:sus2"]).await?;
+    crate::assert_resp!(r, int(3), "SUNIONSTORE count");
+    let r = client.cmd(&["SMEMBERS", "test_rs:sus_dest"]).await?;
+    assert!(matches!(&r, crate::RespType::Array(Some(v)) if v.len() == 3), "SUNIONSTORE 3 members");
+    Ok(())
+}
+
+pub async fn test_sinterstore(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["SADD", "test_rs:sis1", "a", "b", "c"]).await?;
+    let _ = client.cmd(&["SADD", "test_rs:sis2", "b", "c", "d"]).await?;
+    let r = client.cmd(&["SINTERSTORE", "test_rs:sis_dest", "test_rs:sis1", "test_rs:sis2"]).await?;
+    crate::assert_resp!(r, int(2), "SINTERSTORE count");
+    Ok(())
+}
+
+pub async fn test_sdiffstore(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["SADD", "test_rs:sds1", "a", "b", "c"]).await?;
+    let _ = client.cmd(&["SADD", "test_rs:sds2", "b"]).await?;
+    let r = client.cmd(&["SDIFFSTORE", "test_rs:sds_dest", "test_rs:sds1", "test_rs:sds2"]).await?;
+    crate::assert_resp!(r, int(2), "SDIFFSTORE count");
+    Ok(())
+}
