@@ -1,8 +1,10 @@
 use bytes::Bytes;
 
-use crate::db::{Entry, StreamData, StreamEntry, Value, with_db};
+use crate::cmd::types::XGroupSub;
+use crate::db::{ConsumerGroup, Entry, StreamData, StreamEntry, Value, with_db};
 use crate::resp;
 use crate::resp::RespType;
+use std::collections::HashMap;
 
 // ── Stream ID helpers ─────────────────────────────────────────────────
 
@@ -266,6 +268,217 @@ pub fn handle_xread(count: Option<u64>, keys: &[String], ids: &[String]) -> Resp
         } else {
             RespType::Array(Some(streams_resp))
         }
+    })
+}
+
+pub fn handle_xgroup(sub: XGroupSub, key: &str) -> RespType {
+    with_db(|db| {
+        let entry = db.get_mut(key);
+        let entry = match entry {
+            Some(e) => e,
+            None => return RespType::Error("ERR no such stream key".to_string()),
+        };
+        let stream = match &mut entry.value {
+            Value::Stream(s) => s,
+            _ => return wrong_type(),
+        };
+
+        match sub {
+            XGroupSub::Create { group, id } => {
+                if stream.groups.contains_key(&group) {
+                    return RespType::Error("BUSYGROUP Consumer Group name already exists".to_string());
+                }
+                // Validate the id
+                if id != "$" && id != "0" && parse_stream_id(&id).is_none() {
+                    return RespType::Error("ERR invalid stream ID".to_string());
+                }
+                // "$" means "last entry in stream", "0" means "from beginning"
+                let last_delivered_id = if id == "$" {
+                    stream.entries.back().map(|e| e.id.clone()).unwrap_or_else(|| "0-0".to_string())
+                } else {
+                    id.clone()
+                };
+                stream.groups.insert(group.clone(), ConsumerGroup {
+                    name: group,
+                    last_delivered_id,
+                    pending: HashMap::new(),
+                    consumers: HashMap::new(),
+                });
+                RespType::SimpleString("OK".to_string())
+            }
+            XGroupSub::Destroy { group } => {
+                if stream.groups.remove(&group).is_some() {
+                    RespType::Integer(1)
+                } else {
+                    RespType::Integer(0)
+                }
+            }
+            XGroupSub::CreateConsumer { group, consumer } => {
+                let cg = match stream.groups.get_mut(&group) {
+                    Some(g) => g,
+                    None => return RespType::Error("ERR no such consumer group".to_string()),
+                };
+                if cg.consumers.contains_key(&consumer) {
+                    return RespType::Integer(0);
+                }
+                cg.consumers.insert(consumer.clone(), crate::db::ConsumerInfo {
+                    name: consumer,
+                    pending_count: 0,
+                });
+                RespType::Integer(1)
+            }
+            XGroupSub::DelConsumer { group, consumer } => {
+                let cg = match stream.groups.get_mut(&group) {
+                    Some(g) => g,
+                    None => return RespType::Error("ERR no such consumer group".to_string()),
+                };
+                // Remove pending entries for this consumer
+                let pending_count = cg.pending.remove(&consumer).map(|v| v.len() as i64).unwrap_or(0);
+                cg.consumers.remove(&consumer);
+                RespType::Integer(pending_count)
+            }
+            XGroupSub::SetId { group, id } => {
+                let cg = match stream.groups.get_mut(&group) {
+                    Some(g) => g,
+                    None => return RespType::Error("ERR no such consumer group".to_string()),
+                };
+                cg.last_delivered_id = id;
+                RespType::SimpleString("OK".to_string())
+            }
+        }
+    })
+}
+
+pub fn handle_xreadgroup(
+    group: &str,
+    consumer: &str,
+    count: Option<u64>,
+    keys: &[String],
+    ids: &[String],
+) -> RespType {
+    with_db(|db| {
+        let mut streams_resp: Vec<RespType> = Vec::new();
+
+        for (key, id_str) in keys.iter().zip(ids.iter()) {
+            let entry = match db.get_mut(key) {
+                Some(e) => e,
+                None => continue,
+            };
+            let stream = match &mut entry.value {
+                Value::Stream(s) => s,
+                _ => continue,
+            };
+            let cg = match stream.groups.get_mut(group) {
+                Some(g) => g,
+                _ => continue,
+            };
+
+            let entries: Vec<RespType> = if id_str == ">" {
+                // New messages: deliver from last_delivered_id
+                let from_id = &cg.last_delivered_id;
+                let from = parse_stream_id(from_id).unwrap_or((0, 0));
+
+                let matched: Vec<(String, Vec<(Bytes, Bytes)>)> = stream
+                    .entries
+                    .iter()
+                    .filter(|e| {
+                        parse_stream_id(&e.id)
+                            .map(|(ts, seq)| (ts, seq) > from)
+                            .unwrap_or(false)
+                    })
+                    .take(count.unwrap_or(u64::MAX) as usize)
+                    .map(|e| (e.id.clone(), e.fields.clone()))
+                    .collect();
+
+                // Mark as pending and update last_delivered_id
+                for (id, _) in &matched {
+                    cg.pending
+                        .entry(consumer.to_string())
+                        .or_default()
+                        .push(crate::db::PendingEntry {
+                            id: id.clone(),
+                            consumer_name: consumer.to_string(),
+                            delivery_count: 1,
+                        });
+                    let con = cg.consumers.entry(consumer.to_string()).or_insert_with(|| {
+                        crate::db::ConsumerInfo { name: consumer.to_string(), pending_count: 0 }
+                    });
+                    con.pending_count += 1;
+                }
+                if let Some((last_id, _)) = matched.last() {
+                    cg.last_delivered_id = last_id.clone();
+                }
+
+                matched
+                    .into_iter()
+                    .map(|(id, fields)| make_stream_entry(id, fields))
+                    .collect()
+            } else {
+                // Read pending messages by ID
+                let since = parse_stream_id(id_str).unwrap_or((0, 0));
+                let pending = cg.pending.get(consumer).cloned().unwrap_or_default();
+                pending
+                    .into_iter()
+                    .filter(|pe| {
+                        parse_stream_id(&pe.id)
+                            .map(|(ts, seq)| (ts, seq) > since)
+                            .unwrap_or(false)
+                    })
+                    .take(count.unwrap_or(u64::MAX) as usize)
+                    .filter_map(|pe| {
+                        stream.entries.iter().find(|e| e.id == pe.id)
+                            .map(|e| make_stream_entry(e.id.clone(), e.fields.clone()))
+                    })
+                    .collect()
+            };
+
+            if !entries.is_empty() {
+                streams_resp.push(RespType::Array(Some(vec![
+                    RespType::BulkString(Some(bytes::Bytes::from(key.clone()))),
+                    RespType::Array(Some(entries)),
+                ])));
+            }
+        }
+
+        if streams_resp.is_empty() {
+            RespType::Array(Some(vec![]))
+        } else {
+            RespType::Array(Some(streams_resp))
+        }
+    })
+}
+
+pub fn handle_xack(key: &str, group: &str, ids: &[String]) -> RespType {
+    with_db(|db| {
+        let entry = match db.get_mut(key) {
+            Some(e) => e,
+            None => return RespType::Integer(0),
+        };
+        let stream = match &mut entry.value {
+            Value::Stream(s) => s,
+            _ => return RespType::Integer(0),
+        };
+        let cg = match stream.groups.get_mut(group) {
+            Some(g) => g,
+            _ => return RespType::Integer(0),
+        };
+
+        let mut acked = 0i64;
+        for id in ids {
+            // Remove from pending across all consumers
+            let mut found = false;
+            for pending_list in cg.pending.values_mut() {
+                if let Some(pos) = pending_list.iter().position(|pe| pe.id == *id) {
+                    pending_list.swap_remove(pos);
+                    found = true;
+                    break;
+                }
+            }
+            if found {
+                acked += 1;
+            }
+        }
+        RespType::Integer(acked)
     })
 }
 
