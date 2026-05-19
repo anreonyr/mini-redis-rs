@@ -122,13 +122,23 @@ async fn dispatch_match<'a>(
         ParsedCmd::Xdel { key, ids } => handlers::handle_xdel(&key, &ids),
         ParsedCmd::Xread { count, keys, ids } => handlers::handle_xread(count, &keys, &ids),
         // Consumer Groups
-        ParsedCmd::XAck { .. }
-        | ParsedCmd::XClaim { .. }
-        | ParsedCmd::XGroup { .. }
-        | ParsedCmd::XInfo { .. }
-        | ParsedCmd::XPending { .. }
-        | ParsedCmd::XReadGroup { .. } => {
-            resp::RespType::Error("ERR not implemented".to_string())
+        ParsedCmd::XGroup { sub, key } => {
+            handlers::handle_xgroup(sub, &key)
+        }
+        ParsedCmd::XReadGroup { group, consumer, count, keys, ids } => {
+            handlers::handle_xreadgroup(&group, &consumer, count, &keys, &ids)
+        }
+        ParsedCmd::XAck { key, group, ids } => {
+            handlers::handle_xack(&key, &group, &ids)
+        }
+        ParsedCmd::XPending { key, group, start, end, count, consumer } => {
+            handlers::handle_xpending(&key, &group, &start, &end, count, consumer.as_deref())
+        }
+        ParsedCmd::XClaim { key, group, consumer, min_idle, ids } => {
+            handlers::handle_xclaim(&key, &group, &consumer, min_idle, &ids)
+        }
+        ParsedCmd::XInfo { sub, key, group } => {
+            handlers::handle_xinfo(&sub, &key, group.as_deref())
         }
         // Hash
         ParsedCmd::Hset { key, fields } => handlers::handle_hset(&key, &fields),

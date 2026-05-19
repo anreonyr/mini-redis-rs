@@ -277,6 +277,49 @@ pub fn init() {
         since_stage: 0,
         summary: "Reads data from one or more streams",
     });
+    // Consumer Groups (advanced stream features)
+    reg.register(CommandInfo {
+        name: "XGROUP",
+        arity: -5,
+        category: "Stream",
+        since_stage: 0,
+        summary: "Creates and manages consumer groups",
+    });
+    reg.register(CommandInfo {
+        name: "XREADGROUP",
+        arity: -6,
+        category: "Stream",
+        since_stage: 0,
+        summary: "Reads from a stream via a consumer group",
+    });
+    reg.register(CommandInfo {
+        name: "XACK",
+        arity: -4,
+        category: "Stream",
+        since_stage: 0,
+        summary: "Acknowledges one or more messages",
+    });
+    reg.register(CommandInfo {
+        name: "XPENDING",
+        arity: -3,
+        category: "Stream",
+        since_stage: 0,
+        summary: "Returns pending messages",
+    });
+    reg.register(CommandInfo {
+        name: "XCLAIM",
+        arity: -5,
+        category: "Stream",
+        since_stage: 0,
+        summary: "Claims pending messages",
+    });
+    reg.register(CommandInfo {
+        name: "XINFO",
+        arity: -3,
+        category: "Stream",
+        since_stage: 0,
+        summary: "Returns stream/group/consumer information",
+    });
     // Key Management
     reg.register(CommandInfo {
         name: "DEL",

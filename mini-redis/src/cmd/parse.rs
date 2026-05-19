@@ -1,7 +1,7 @@
 use crate::resp;
 use std::time::Duration;
 
-use super::types::{CmdError, ParsedCmd, wrong_arg_count};
+use super::types::{CmdError, ParsedCmd, XGroupSub, wrong_arg_count};
 
 impl ParsedCmd {
     pub fn parse(cmd: &str, args: Vec<String>) -> Result<Self, CmdError> {
@@ -358,6 +358,146 @@ impl ParsedCmd {
                 let keys = all[..mid].to_vec();
                 let ids = all[mid..].to_vec();
                 ParsedCmd::Xread { count, keys, ids }
+            }
+            // Consumer Groups (advanced stream features)
+            "XGROUP" => {
+                if args.len() < 3 {
+                    return Err(wrong_arg_count("xgroup"));
+                }
+                let mut iter = args.into_iter();
+                let sub = iter.next().unwrap().to_uppercase();
+                let key = iter.next().unwrap();
+                let sub = match sub.as_str() {
+                    "CREATE" => {
+                        let group = iter.next().ok_or_else(|| wrong_arg_count("xgroup"))?;
+                        let id = iter.next().ok_or_else(|| wrong_arg_count("xgroup"))?;
+                        XGroupSub::Create { group, id }
+                    }
+                    "CREATECONSUMER" => {
+                        let group = iter.next().ok_or_else(|| wrong_arg_count("xgroup"))?;
+                        let consumer = iter.next().ok_or_else(|| wrong_arg_count("xgroup"))?;
+                        XGroupSub::CreateConsumer { group, consumer }
+                    }
+                    "DELCONSUMER" => {
+                        let group = iter.next().ok_or_else(|| wrong_arg_count("xgroup"))?;
+                        let consumer = iter.next().ok_or_else(|| wrong_arg_count("xgroup"))?;
+                        XGroupSub::DelConsumer { group, consumer }
+                    }
+                    "DESTROY" => {
+                        let group = iter.next().ok_or_else(|| wrong_arg_count("xgroup"))?;
+                        XGroupSub::Destroy { group }
+                    }
+                    "SETID" => {
+                        let group = iter.next().ok_or_else(|| wrong_arg_count("xgroup"))?;
+                        let id = iter.next().ok_or_else(|| wrong_arg_count("xgroup"))?;
+                        XGroupSub::SetId { group, id }
+                    }
+                    _ => return Err(CmdError::SyntaxError),
+                };
+                ParsedCmd::XGroup { sub, key }
+            }
+            "XREADGROUP" => {
+                // XREADGROUP GROUP group consumer [COUNT n] STREAMS key [key...] id [id...]
+                if args.len() < 6 {
+                    return Err(wrong_arg_count("xreadgroup"));
+                }
+                let mut idx = 0;
+                if args.get(idx).map(|s| s.as_str()) != Some("GROUP") {
+                    return Err(CmdError::SyntaxError);
+                }
+                idx += 1;
+                let group = args.get(idx).ok_or_else(|| wrong_arg_count("xreadgroup"))?.clone();
+                idx += 1;
+                let consumer = args.get(idx).ok_or_else(|| wrong_arg_count("xreadgroup"))?.clone();
+                idx += 1;
+
+                let count = if args.get(idx).map(|s| s.as_str()) == Some("COUNT") {
+                    idx += 1;
+                    let n = args.get(idx)
+                        .ok_or_else(|| wrong_arg_count("xreadgroup"))?
+                        .parse::<u64>()
+                        .map_err(|_| CmdError::InvalidInteger)?;
+                    idx += 1;
+                    Some(n)
+                } else {
+                    None
+                };
+
+                if args.get(idx).map(|s| s.as_str()) != Some("STREAMS") {
+                    return Err(CmdError::SyntaxError);
+                }
+                idx += 1;
+
+                let remaining = args[idx..].to_vec();
+                if remaining.len() < 2 || remaining.len() % 2 != 0 {
+                    return Err(wrong_arg_count("xreadgroup"));
+                }
+                let mid = remaining.len() / 2;
+                let keys = remaining[..mid].to_vec();
+                let ids = remaining[mid..].to_vec();
+
+                ParsedCmd::XReadGroup { group, consumer, count, keys, ids }
+            }
+            "XACK" => {
+                if args.len() < 3 {
+                    return Err(wrong_arg_count("xack"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let group = iter.next().unwrap();
+                let ids: Vec<String> = iter.collect();
+                ParsedCmd::XAck { key, group, ids }
+            }
+            "XPENDING" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count("xpending"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let group = iter.next().unwrap();
+                let (start, end, count, consumer) = match iter.len() {
+                    0 => ("-".to_string(), "+".to_string(), 10u64, None),
+                    3 => {
+                        let s = iter.next().unwrap();
+                        let e = iter.next().unwrap();
+                        let c = iter.next().unwrap().parse::<u64>()
+                            .map_err(|_| CmdError::InvalidInteger)?;
+                        (s, e, c, None)
+                    }
+                    4 => {
+                        let s = iter.next().unwrap();
+                        let e = iter.next().unwrap();
+                        let c = iter.next().unwrap().parse::<u64>()
+                            .map_err(|_| CmdError::InvalidInteger)?;
+                        let con = iter.next().unwrap();
+                        (s, e, c, Some(con))
+                    }
+                    _ => return Err(wrong_arg_count("xpending")),
+                };
+                ParsedCmd::XPending { key, group, start, end, count, consumer }
+            }
+            "XCLAIM" => {
+                if args.len() < 5 {
+                    return Err(wrong_arg_count("xclaim"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let group = iter.next().unwrap();
+                let consumer = iter.next().unwrap();
+                let min_idle = iter.next().unwrap().parse::<u64>()
+                    .map_err(|_| CmdError::InvalidInteger)?;
+                let ids: Vec<String> = iter.collect();
+                ParsedCmd::XClaim { key, group, consumer, min_idle, ids }
+            }
+            "XINFO" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count("xinfo"));
+                }
+                let mut iter = args.into_iter();
+                let sub = iter.next().unwrap().to_uppercase();
+                let key = iter.next().unwrap();
+                let group = iter.next();
+                ParsedCmd::XInfo { sub, key, group }
             }
             // Hash
             "HSET" => {
