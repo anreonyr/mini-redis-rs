@@ -78,7 +78,13 @@ pub fn bump_version() -> u64 {
 }
 
 /// Get the current version of a key, or None if the key doesn't exist.
+/// Locks the DB internally. Do NOT call from inside `with_db()` (deadlock risk).
 pub fn key_version(key: &str) -> Option<u64> {
     let db = DB.lock().unwrap();
+    db.get(key).map(|e| e.version)
+}
+
+/// Get a key's version from an already-locked DB reference (safe inside `with_db`).
+pub fn entry_version(db: &HashMap<String, Entry>, key: &str) -> Option<u64> {
     db.get(key).map(|e| e.version)
 }
