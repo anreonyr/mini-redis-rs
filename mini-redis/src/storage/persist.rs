@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fs;
+use std::time::Duration;
 
 use tokio::time::Instant;
 
@@ -8,6 +9,7 @@ use crate::storage::db::Entry;
 /// Save the entire database to a file at `path`.
 /// Expired keys are skipped during serialization.
 /// Runs blocking IO on a dedicated thread via `spawn_blocking`.
+/// Times out after 30 seconds to avoid hanging the server on large datasets.
 pub async fn save(path: &str) -> Result<(), String> {
     let data = crate::storage::db::with_db(|db| {
         let mut map: HashMap<String, Entry> = HashMap::new();
@@ -22,17 +24,26 @@ pub async fn save(path: &str) -> Result<(), String> {
     });
 
     let path = path.to_string();
-    tokio::task::spawn_blocking(move || {
-        let bytes = bincode::serialize(&data).map_err(|e| format!("serialize error: {}", e))?;
+    let result = tokio::time::timeout(Duration::from_secs(30), async {
+        tokio::task::spawn_blocking(move || {
+            let bytes =
+                bincode::serialize(&data).map_err(|e| format!("serialize error: {}", e))?;
 
-        // Atomic write: write to temp file, then rename
-        let tmp = format!("{}.tmp", path);
-        fs::write(&tmp, &bytes).map_err(|e| format!("write error: {}", e))?;
-        fs::rename(&tmp, &path).map_err(|e| format!("rename error: {}", e))?;
-        Ok::<_, String>(())
+            // Atomic write: write to temp file, then rename
+            let tmp = format!("{}.tmp", path);
+            fs::write(&tmp, &bytes).map_err(|e| format!("write error: {}", e))?;
+            fs::rename(&tmp, &path).map_err(|e| format!("rename error: {}", e))?;
+            Ok::<_, String>(())
+        })
+        .await
+        .map_err(|e| format!("task join error: {}", e))?
     })
-    .await
-    .map_err(|e| format!("task join error: {}", e))?
+    .await;
+
+    match result {
+        Ok(inner) => inner,
+        Err(_) => Err("save timed out after 30s".to_string()),
+    }
 }
 
 /// Load the database from a file at `path`.

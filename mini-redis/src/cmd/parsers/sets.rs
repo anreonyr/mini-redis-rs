@@ -92,3 +92,28 @@ pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
         _ => Err(CmdError::UnknownCommand),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_sadd_ok() {
+        let r = cmd("SADD", vec!["k".into(), "a".into(), "b".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Sadd { .. })));
+    }
+    #[test]
+    fn test_smembers_ok() {
+        let r = cmd("SMEMBERS", vec!["k".into()]);
+        assert_eq!(r, Ok(ParsedCmd::Smembers { key: "k".into() }));
+    }
+    #[test]
+    fn test_sinter_ok() {
+        let r = cmd("SINTER", vec!["a".into(), "b".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Sinter { .. })));
+    }
+    #[test]
+    fn test_sinter_empty() {
+        let r = cmd("SINTER", vec![]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
+    }
+}

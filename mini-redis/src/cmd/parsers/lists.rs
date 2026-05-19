@@ -112,3 +112,33 @@ pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
         _ => Err(CmdError::UnknownCommand),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_rpush_ok() {
+        let r = cmd("RPUSH", vec!["k".into(), "a".into(), "b".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Rpush { .. })));
+    }
+    #[test]
+    fn test_lrange_ok() {
+        let r = cmd("LRANGE", vec!["k".into(), "0".into(), "-1".into()]);
+        assert_eq!(r, Ok(ParsedCmd::Lrange { key: "k".into(), start: 0, stop: -1 }));
+    }
+    #[test]
+    fn test_lrange_invalid_start() {
+        let r = cmd("LRANGE", vec!["k".into(), "x".into(), "-1".into()]);
+        assert!(matches!(r, Err(CmdError::InvalidInteger)));
+    }
+    #[test]
+    fn test_blpop_ok() {
+        let r = cmd("BLPOP", vec!["k1".into(), "k2".into(), "5".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Blpop { keys, timeout }) if keys == vec!["k1", "k2"] && timeout == 5));
+    }
+    #[test]
+    fn test_blpop_missing_key() {
+        let r = cmd("BLPOP", vec!["k1".into()]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
+    }
+}

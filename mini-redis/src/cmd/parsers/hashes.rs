@@ -103,3 +103,28 @@ pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
         _ => Err(CmdError::UnknownCommand),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_hset_ok() {
+        let r = cmd("HSET", vec!["k".into(), "f1".into(), "v1".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Hset { .. })));
+    }
+    #[test]
+    fn test_hset_odd_args() {
+        let r = cmd("HSET", vec!["k".into(), "f1".into()]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
+    }
+    #[test]
+    fn test_hget_ok() {
+        let r = cmd("HGET", vec!["k".into(), "f".into()]);
+        assert_eq!(r, Ok(ParsedCmd::Hget { key: "k".into(), field: "f".into() }));
+    }
+    #[test]
+    fn test_hgetall_ok() {
+        let r = cmd("HGETALL", vec!["k".into()]);
+        assert_eq!(r, Ok(ParsedCmd::Hgetall { key: "k".into() }));
+    }
+}

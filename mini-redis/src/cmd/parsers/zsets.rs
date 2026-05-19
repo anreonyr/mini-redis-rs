@@ -254,6 +254,41 @@ pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
 }
 
 /// Parse store-command arguments: numkeys key [key...] [WEIGHTS w...] [AGGREGATE SUM|MIN|MAX]
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_zadd_ok() {
+        let r = cmd("ZADD", vec!["k".into(), "1".into(), "a".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Zadd { .. })));
+    }
+    #[test]
+    fn test_zadd_odd_args() {
+        let r = cmd("ZADD", vec!["k".into(), "1".into()]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
+    }
+    #[test]
+    fn test_zrange_ok() {
+        let r = cmd("ZRANGE", vec!["k".into(), "0".into(), "-1".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Zrange { .. })));
+    }
+    #[test]
+    fn test_zinterstore_ok() {
+        let r = cmd("ZINTERSTORE", vec!["dest".into(), "2".into(), "a".into(), "b".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::ZInterStore { dest, .. }) if dest == "dest"));
+    }
+    #[test]
+    fn test_zunion_with_weights() {
+        let r = cmd("ZUNION", vec!["2".into(), "a".into(), "b".into(), "WEIGHTS".into(), "1".into(), "2".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::ZUnion { .. })));
+    }
+    #[test]
+    fn test_zdiff_ok() {
+        let r = cmd("ZDIFF", vec!["2".into(), "a".into(), "b".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::ZDiff { .. })));
+    }
+}
+
 fn parse_zset_store_args(args: &[String]) -> Result<(usize, Vec<String>, Vec<f64>, String), CmdError> {
     let mut iter = args.iter();
     let numkeys = iter.next().ok_or_else(|| wrong_arg_count("zstore"))?

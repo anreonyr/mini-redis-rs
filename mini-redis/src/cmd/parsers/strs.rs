@@ -183,3 +183,58 @@ pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
         _ => Err(CmdError::UnknownCommand),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_set_ok() {
+        let r = cmd("SET", vec!["k".into(), "v".into()]);
+        assert_eq!(r, Ok(ParsedCmd::Set { key: "k".into(), value: "v".into(), expiry: None }));
+    }
+    #[test]
+    fn test_set_ex() {
+        let r = cmd("SET", vec!["k".into(), "v".into(), "EX".into(), "10".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Set { expiry: Some(_), .. })));
+    }
+    #[test]
+    fn test_set_invalid_expiry_val() {
+        let r = cmd("SET", vec!["k".into(), "v".into(), "EX".into(), "x".into()]);
+        assert!(matches!(r, Err(CmdError::InvalidInteger)));
+    }
+    #[test]
+    fn test_set_invalid_flag() {
+        let r = cmd("SET", vec!["k".into(), "v".into(), "BAD".into(), "x".into()]);
+        assert!(matches!(r, Err(CmdError::SyntaxError)));
+    }
+    #[test]
+    fn test_set_wrong_arg_count() {
+        let r = cmd("SET", vec!["k".into()]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
+    }
+    #[test]
+    fn test_get_ok() {
+        let r = cmd("GET", vec!["k".into()]);
+        assert_eq!(r, Ok(ParsedCmd::Get { key: "k".into() }));
+    }
+    #[test]
+    fn test_get_missing_arg() {
+        let r = cmd("GET", vec![]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
+    }
+    #[test]
+    fn test_incr_ok() {
+        let r = cmd("INCR", vec!["k".into()]);
+        assert_eq!(r, Ok(ParsedCmd::Incr { key: "k".into() }));
+    }
+    #[test]
+    fn test_bitop_ok() {
+        let r = cmd("BITOP", vec!["AND".into(), "dest".into(), "a".into(), "b".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::BitOp { .. })));
+    }
+    #[test]
+    fn test_bitop_missing_args() {
+        let r = cmd("BITOP", vec!["AND".into()]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
+    }
+}

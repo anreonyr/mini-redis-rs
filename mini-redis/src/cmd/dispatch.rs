@@ -266,7 +266,9 @@ async fn dispatch_match<'a>(
         ParsedCmd::Bgsave => handlers::handle_bgsave(),
         ParsedCmd::Shutdown => {
             let resp = handlers::handle_shutdown().await;
-            state.quit = true;
+            if crate::server::shutdown::is_requested() {
+                state.quit = true;
+            }
             resp
         }
         // Geo

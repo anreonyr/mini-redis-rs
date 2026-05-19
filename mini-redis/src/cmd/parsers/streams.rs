@@ -247,3 +247,33 @@ pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
         _ => Err(CmdError::UnknownCommand),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_xadd_ok() {
+        let r = cmd("XADD", vec!["s".into(), "*".into(), "f".into(), "v".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Xadd { .. })));
+    }
+    #[test]
+    fn test_xadd_odd_fields() {
+        let r = cmd("XADD", vec!["s".into(), "*".into(), "f".into()]);
+        assert!(matches!(r, Err(CmdError::WrongArgCount(_))));
+    }
+    #[test]
+    fn test_xrange_with_count() {
+        let r = cmd("XRANGE", vec!["s".into(), "-".into(), "+".into(), "COUNT".into(), "10".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Xrange { count: Some(10), .. })));
+    }
+    #[test]
+    fn test_xread_ok() {
+        let r = cmd("XREAD", vec!["STREAMS".into(), "s1".into(), "0".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Xread { .. })));
+    }
+    #[test]
+    fn test_xgroup_create_ok() {
+        let r = cmd("XGROUP", vec!["CREATE".into(), "s".into(), "g".into(), "$".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::XGroup { .. })));
+    }
+}

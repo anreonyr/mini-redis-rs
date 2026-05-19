@@ -707,7 +707,7 @@ impl ParsedCmd {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, PartialEq, thiserror::Error)]
 pub enum CmdError {
     #[error("ERR wrong number of arguments for '{0}' command")]
     WrongArgCount(String),

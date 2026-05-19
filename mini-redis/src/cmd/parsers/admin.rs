@@ -303,6 +303,61 @@ pub fn cmd(cmd: &str, args: Vec<String>) -> Result<ParsedCmd, CmdError> {
 // ── Helpers ──
 
 /// Parse optional MATCH, COUNT, and TYPE from SCAN-style args.
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_ping() {
+        let r = cmd("PING", vec![]);
+        assert_eq!(r, Ok(ParsedCmd::Ping));
+    }
+    #[test]
+    fn test_del_ok() {
+        let r = cmd("DEL", vec!["a".into(), "b".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Del { .. })));
+    }
+    #[test]
+    fn test_expire_ok() {
+        let r = cmd("EXPIRE", vec!["k".into(), "60".into()]);
+        assert_eq!(r, Ok(ParsedCmd::Expire { key: "k".into(), seconds: 60 }));
+    }
+    #[test]
+    fn test_select_ok() {
+        let r = cmd("SELECT", vec!["5".into()]);
+        assert_eq!(r, Ok(ParsedCmd::Select { index: 5 }));
+    }
+    #[test]
+    fn test_auth_ok() {
+        let r = cmd("AUTH", vec!["pw".into()]);
+        assert_eq!(r, Ok(ParsedCmd::Auth { password: "pw".into() }));
+    }
+    #[test]
+    fn test_scan_ok() {
+        let r = cmd("SCAN", vec!["0".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Scan { cursor: 0, .. })));
+    }
+    #[test]
+    fn test_scan_with_match() {
+        let r = cmd("SCAN", vec!["0".into(), "MATCH".into(), "foo*".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::Scan { match_pattern: Some(p), .. }) if p == "foo*"));
+    }
+    #[test]
+    fn test_geoadd_ok() {
+        let r = cmd("GEOADD", vec!["k".into(), "13.3".into(), "52.5".into(), "berlin".into()]);
+        assert!(matches!(r, Ok(ParsedCmd::GeoAdd { .. })));
+    }
+    #[test]
+    fn test_geoadd_invalid_lon() {
+        let r = cmd("GEOADD", vec!["k".into(), "x".into(), "52.5".into(), "berlin".into()]);
+        assert!(matches!(r, Err(CmdError::InvalidInteger)));
+    }
+    #[test]
+    fn test_unknown_command() {
+        let r = cmd("NOTACMD", vec![]);
+        assert!(matches!(r, Err(CmdError::UnknownCommand)));
+    }
+}
+
 fn parse_scan_args(args: &[String]) -> (Option<String>, u64, Option<String>) {
     let mut i = 0;
     let mut match_pattern = None;
