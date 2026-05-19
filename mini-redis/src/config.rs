@@ -2,16 +2,26 @@ use std::sync::{LazyLock, Mutex};
 
 pub struct ServerConfig {
     pub requirepass: Option<String>,
+    pub dir: String,
+    pub dbfilename: String,
 }
 
 impl ServerConfig {
     pub fn new() -> Self {
         let password = std::env::var("REDIS_PASSWORD").ok().filter(|s| !s.is_empty());
-        Self { requirepass: password }
+        Self {
+            requirepass: password,
+            dir: ".".to_string(),
+            dbfilename: "dump.db".to_string(),
+        }
     }
 
     pub fn requirepass_is_set(&self) -> bool {
         self.requirepass.is_some()
+    }
+
+    pub fn db_path(&self) -> String {
+        format!("{}/{}", self.dir.trim_end_matches('/').trim_end_matches('\\'), self.dbfilename)
     }
 }
 

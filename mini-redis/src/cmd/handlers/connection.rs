@@ -92,14 +92,20 @@ pub fn handle_info(section: Option<String>) -> RespType {
 
 pub fn handle_config_get(parameter: &str) -> RespType {
     match parameter.to_lowercase().as_str() {
-        "dir" => RespType::Array(Some(vec![
-            RespType::BulkString(Some(bytes::Bytes::copy_from_slice(parameter.as_bytes()))),
-            RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"."))),
-        ])),
-        "dbfilename" => RespType::Array(Some(vec![
-            RespType::BulkString(Some(bytes::Bytes::copy_from_slice(parameter.as_bytes()))),
-            RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"dump.rdb"))),
-        ])),
+        "dir" => {
+            let val = config::with_config(|cfg| cfg.dir.clone());
+            RespType::Array(Some(vec![
+                RespType::BulkString(Some(bytes::Bytes::copy_from_slice(parameter.as_bytes()))),
+                RespType::BulkString(Some(bytes::Bytes::copy_from_slice(val.as_bytes()))),
+            ]))
+        }
+        "dbfilename" => {
+            let val = config::with_config(|cfg| cfg.dbfilename.clone());
+            RespType::Array(Some(vec![
+                RespType::BulkString(Some(bytes::Bytes::copy_from_slice(parameter.as_bytes()))),
+                RespType::BulkString(Some(bytes::Bytes::copy_from_slice(val.as_bytes()))),
+            ]))
+        }
         "maxclients" => RespType::Array(Some(vec![
             RespType::BulkString(Some(bytes::Bytes::copy_from_slice(parameter.as_bytes()))),
             RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"10000"))),
@@ -133,6 +139,14 @@ pub fn handle_config_set(parameter: &str, value: &str) -> RespType {
                 Some(value.to_string())
             };
             config::with_config_mut(|cfg| cfg.requirepass = pw);
+            RespType::SimpleString("OK".to_string())
+        }
+        "dir" => {
+            config::with_config_mut(|cfg| cfg.dir = value.to_string());
+            RespType::SimpleString("OK".to_string())
+        }
+        "dbfilename" => {
+            config::with_config_mut(|cfg| cfg.dbfilename = value.to_string());
             RespType::SimpleString("OK".to_string())
         }
         _ => RespType::Error("ERR unknown config parameter".to_string()),
