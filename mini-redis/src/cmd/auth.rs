@@ -7,22 +7,21 @@ use crate::resp::RespType;
 #[derive(Clone)]
 pub struct TransactionState {
     pub queue: Vec<ParsedCmd>,
-    pub watching: HashMap<String, u64>,
 }
 
 impl TransactionState {
     pub fn new() -> Self {
         Self {
             queue: Vec::new(),
-            watching: HashMap::new(),
         }
     }
 }
 
-/// Per-connection authentication state.
+/// Per-connection authentication and transaction state.
 pub struct ConnectionState {
     authenticated: bool,
     pub transaction: Option<TransactionState>,
+    pub watching: HashMap<String, u64>,
 }
 
 impl ConnectionState {
@@ -30,6 +29,7 @@ impl ConnectionState {
         Self {
             authenticated: false,
             transaction: None,
+            watching: HashMap::new(),
         }
     }
 

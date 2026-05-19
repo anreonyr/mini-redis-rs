@@ -222,10 +222,10 @@ pub async fn handle_exec(state: &mut ConnectionState) -> RespType {
         None => return RespType::Error("ERR EXEC without MULTI".to_string()),
     };
 
-    // Check watched keys
-    for (key, recorded_version) in &tx.watching {
+    // Check watched keys (from state-level watching, not TransactionState)
+    for (key, recorded_version) in &state.watching {
         if db::key_version(key) != Some(*recorded_version) {
-            // Key changed -- transaction aborted, return nil array
+            // Key changed — transaction aborted, return nil array
             return RespType::Array(None);
         }
     }
@@ -253,20 +253,11 @@ pub fn handle_watch(state: &mut ConnectionState, keys: &[String]) -> RespType {
         .iter()
         .map(|k| (k.clone(), db::key_version(k).unwrap_or(0)))
         .collect();
-
-    if let Some(tx) = &mut state.transaction {
-        tx.watching.extend(versions);
-    } else {
-        let mut tx = TransactionState::new();
-        tx.watching = versions;
-        state.transaction = Some(tx);
-    }
+    state.watching.extend(versions);
     RespType::SimpleString("OK".to_string())
 }
 
 pub fn handle_unwatch(state: &mut ConnectionState) -> RespType {
-    if let Some(tx) = &mut state.transaction {
-        tx.watching.clear();
-    }
+    state.watching.clear();
     RespType::SimpleString("OK".to_string())
 }
