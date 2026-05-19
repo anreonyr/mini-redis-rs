@@ -5,7 +5,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use tokio::sync::Notify;
 
-use crate::blocking;
+use crate::waiters;
 use crate::db::{Entry, Value, with_db};
 use crate::resp;
 use crate::resp::RespType;
@@ -27,7 +27,7 @@ pub fn handle_rpush(key: &str, values: &[String]) -> RespType {
             RespType::Integer(len as i64)
         }
     });
-    blocking::notify_waiters(key);
+    waiters::notify_waiters(key);
     result
 }
 
@@ -54,7 +54,7 @@ pub fn handle_lpush(key: &str, values: &[String]) -> RespType {
             RespType::Integer(len as i64)
         }
     });
-    blocking::notify_waiters(key);
+    waiters::notify_waiters(key);
     result
 }
 
@@ -180,7 +180,7 @@ pub async fn handle_blpop(keys: &[String], timeout: u64) -> RespType {
     let notify = Arc::new(Notify::new());
 
     loop {
-        let guard = with_db(|_| blocking::register(keys, &notify));
+        let guard = with_db(|_| waiters::register(keys, &notify));
 
         if timeout == 0 {
             notify.notified().await;
