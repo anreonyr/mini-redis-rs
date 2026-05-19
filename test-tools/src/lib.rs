@@ -718,6 +718,23 @@ tree_tests! {
             "CONFIG SET dir"       => tests::persistence::test_config_set_dir,
         ],
     ],
+    ("Transaction", "Transaction") [
+        ("MULTI", "New") [
+            "MULTI + EXEC basic"    => tests::transaction::test_multi_exec_basic,
+            "nested MULTI"          => tests::transaction::test_nested_multi,
+        ],
+        ("DISCARD", "New") [
+            "MULTI + DISCARD"       => tests::transaction::test_multi_discard,
+        ],
+        ("EXEC", "New") [
+            "EXEC without MULTI"    => tests::transaction::test_exec_without_multi,
+            "DISCARD without MULTI" => tests::transaction::test_discard_without_multi,
+        ],
+        ("WATCH", "New") [
+            "WATCH then EXEC"       => tests::transaction::test_watch_then_exec,
+            "UNWATCH"               => tests::transaction::test_unwatch,
+        ],
+    ],
 }
 
 pub struct BenchmarkDef {

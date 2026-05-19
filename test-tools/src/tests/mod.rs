@@ -9,6 +9,7 @@ pub mod wrongtype;
 pub mod command;
 pub mod server;
 pub mod stream;
+pub mod transaction;
 pub mod hash;
 pub mod set;
 pub mod zset;
