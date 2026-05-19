@@ -1,17 +1,18 @@
 use bytes::Bytes;
+use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
 use std::sync::{LazyLock, Mutex};
-use tokio::time::Instant; // Import Bytes from the byts crate
+use tokio::time::Instant;
 
 static DB: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StreamEntry {
     pub id: String,
     pub fields: Vec<(Bytes, Bytes)>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StreamData {
     pub entries: VecDeque<StreamEntry>,
     pub last_timestamp_ms: i64,
@@ -28,7 +29,7 @@ impl StreamData {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     String(Bytes),
     List(VecDeque<Bytes>),
@@ -38,9 +39,10 @@ pub enum Value {
     ZSet(BTreeSet<(i64, Bytes)>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
     pub value: Value,
+    #[serde(skip)]
     pub expiry: Option<Instant>,
 }
 
