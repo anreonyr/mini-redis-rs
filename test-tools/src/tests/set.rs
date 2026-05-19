@@ -8,8 +8,8 @@ pub async fn test_sadd_new_key(client: &mut RedisClient) -> Result<(), String> {
 }
 
 pub async fn test_sadd_existing_members(client: &mut RedisClient) -> Result<(), String> {
-    let _ = client.cmd(&["SADD", "test_rs:s2", "a", "b"]).await?;
-    let r = client.cmd(&["SADD", "test_rs:s2", "b", "c"]).await?;
+    let _ = client.cmd(&["SADD", "test_rs:ss2", "a", "b"]).await?;
+    let r = client.cmd(&["SADD", "test_rs:ss2", "b", "c"]).await?;
     // b already exists, only c is new
     crate::assert_resp!(r, int(1), "SADD existing members");
     Ok(())
