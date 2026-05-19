@@ -1166,6 +1166,87 @@ impl ParsedCmd {
                 let (match_pattern, count, _type_filter) = parse_scan_args(&args[2..]);
                 ParsedCmd::Zscan { key, cursor, match_pattern, count }
             }
+            // ZSet Set Operations
+            "ZINTERSTORE" | "ZUNIONSTORE" => {
+                if args.len() < 3 {
+                    return Err(wrong_arg_count(cmd));
+                }
+                let dest = args[0].clone();
+                let is_store = cmd == "ZINTERSTORE";
+                let (numkeys, keys, weights, aggregate) = parse_zset_store_args(&args[1..])?;
+                if is_store {
+                    ParsedCmd::ZInterStore { dest, numkeys, keys, weights, aggregate }
+                } else {
+                    ParsedCmd::ZUnionStore { dest, numkeys, keys, weights, aggregate }
+                }
+            }
+            "ZINTER" | "ZUNION" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count(cmd));
+                }
+                let mut iter = args.into_iter();
+                let numkeys = iter.next().ok_or_else(|| wrong_arg_count(cmd))?
+                    .parse::<usize>().map_err(|_| CmdError::InvalidInteger)?;
+                let mut keys = Vec::new();
+                for _ in 0..numkeys {
+                    keys.push(iter.next().ok_or_else(|| wrong_arg_count(cmd))?);
+                }
+                let mut weights = Vec::new();
+                let mut aggregate = "SUM".to_string();
+                let mut withscores = false;
+                while let Some(flag) = iter.next() {
+                    match flag.to_uppercase().as_str() {
+                        "WEIGHTS" => {
+                            for _ in 0..numkeys {
+                                let w = iter.next().ok_or_else(|| wrong_arg_count(cmd))?
+                                    .parse::<f64>().map_err(|_| CmdError::InvalidInteger)?;
+                                weights.push(w);
+                            }
+                        }
+                        "AGGREGATE" => {
+                            aggregate = iter.next().ok_or_else(|| wrong_arg_count(cmd))?.to_uppercase();
+                            if !matches!(aggregate.as_str(), "SUM" | "MIN" | "MAX") {
+                                return Err(CmdError::SyntaxError);
+                            }
+                        }
+                        "WITHSCORES" => withscores = true,
+                        _ => return Err(CmdError::SyntaxError),
+                    }
+                }
+                if cmd == "ZINTER" {
+                    ParsedCmd::ZInter { numkeys, keys, weights, aggregate, withscores }
+                } else {
+                    ParsedCmd::ZUnion { numkeys, keys, weights, aggregate, withscores }
+                }
+            }
+            "ZDIFF" | "ZDIFFSTORE" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count(cmd));
+                }
+                let is_store = cmd == "ZDIFFSTORE";
+                let mut idx = 0;
+                let dest = if is_store {
+                    let d = args.get(idx).ok_or_else(|| wrong_arg_count(cmd))?.clone();
+                    idx += 1;
+                    Some(d)
+                } else { None };
+                let numkeys = args.get(idx).ok_or_else(|| wrong_arg_count(cmd))?
+                    .parse::<usize>().map_err(|_| CmdError::InvalidInteger)?;
+                idx += 1;
+                let mut keys = Vec::new();
+                for _ in 0..numkeys {
+                    keys.push(args.get(idx).ok_or_else(|| wrong_arg_count(cmd))?.clone());
+                    idx += 1;
+                }
+                let withscores = if !is_store {
+                    args.get(idx).map(|s| s.to_uppercase() == "WITHSCORES").unwrap_or(false)
+                } else { false };
+                if is_store {
+                    ParsedCmd::ZDiffStore { dest: dest.unwrap(), keys }
+                } else {
+                    ParsedCmd::ZDiff { numkeys, keys, withscores }
+                }
+            }
             _ => return Err(CmdError::UnknownCommand),
         })
     }
@@ -1198,6 +1279,38 @@ fn parse_scan_args(args: &[String]) -> (Option<String>, u64, Option<String>) {
         i += 1;
     }
     (match_pattern, count, type_filter)
+}
+
+/// Parse store-command arguments: numkeys key [key...] [WEIGHTS w...] [AGGREGATE SUM|MIN|MAX]
+fn parse_zset_store_args(args: &[String]) -> Result<(usize, Vec<String>, Vec<f64>, String), CmdError> {
+    let mut iter = args.iter();
+    let numkeys = iter.next().ok_or_else(|| wrong_arg_count("zstore"))?
+        .parse::<usize>().map_err(|_| CmdError::InvalidInteger)?;
+    let mut keys = Vec::new();
+    for _ in 0..numkeys {
+        keys.push(iter.next().ok_or_else(|| wrong_arg_count("zstore"))?.clone());
+    }
+    let mut weights = Vec::new();
+    let mut aggregate = "SUM".to_string();
+    while let Some(flag) = iter.next() {
+        match flag.to_uppercase().as_str() {
+            "WEIGHTS" => {
+                for _ in 0..numkeys {
+                    let w = iter.next().ok_or_else(|| wrong_arg_count("zstore"))?
+                        .parse::<f64>().map_err(|_| CmdError::InvalidInteger)?;
+                    weights.push(w);
+                }
+            }
+            "AGGREGATE" => {
+                aggregate = iter.next().ok_or_else(|| wrong_arg_count("zstore"))?.to_uppercase();
+                if !matches!(aggregate.as_str(), "SUM" | "MIN" | "MAX") {
+                    return Err(CmdError::SyntaxError);
+                }
+            }
+            _ => return Err(CmdError::SyntaxError),
+        }
+    }
+    Ok((numkeys, keys, weights, aggregate))
 }
 
 /// Parse a RESP frame into a parsed command.

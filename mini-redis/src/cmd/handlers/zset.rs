@@ -1,5 +1,7 @@
 use crate::db::{with_db, Value};
 use crate::resp::RespType;
+use bytes::Bytes;
+use std::collections::HashMap;
 
 pub fn handle_zadd(key: &str, members: &[(i64, String)]) -> RespType {
     with_db(|db| {
@@ -434,4 +436,353 @@ fn wrong_type() -> RespType {
     RespType::Error(
         "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
     )
+}
+
+// ── ZSet Set Operations (intersection / union / difference) ──────────────
+
+/// Aggregate scores across keys by SUM/MIN/MAX with optional weights.
+fn zset_aggregate(
+    db: &HashMap<String, crate::db::Entry>,
+    keys: &[String],
+    weights: &[f64],
+    aggregate: &str,
+) -> HashMap<Bytes, i64> {
+    let mut scores: HashMap<Bytes, i64> = HashMap::new();
+
+    for (i, key) in keys.iter().enumerate() {
+        let weight = weights.get(i).copied().unwrap_or(1.0);
+        if let Some(entry) = db.get(key) {
+            if let Value::ZSet(zset) = &entry.value {
+                for (score, member) in zset.iter() {
+                    let weighted = (*score as f64 * weight) as i64;
+                    match aggregate {
+                        "MIN" => {
+                            let entry = scores.entry(member.clone()).or_insert(i64::MAX);
+                            *entry = (*entry).min(weighted);
+                        }
+                        "MAX" => {
+                            let entry = scores.entry(member.clone()).or_insert(i64::MIN);
+                            *entry = (*entry).max(weighted);
+                        }
+                        _ => {
+                            // SUM
+                            let entry = scores.entry(member.clone()).or_insert(0);
+                            *entry += weighted;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    scores
+}
+
+pub fn handle_zinterstore(
+    dest: &str,
+    numkeys: usize,
+    keys: &[String],
+    weights: &[f64],
+    aggregate: &str,
+) -> RespType {
+    with_db(|db| {
+        // Collect members per key for intersection
+        let mut member_sets: Vec<Vec<Bytes>> = Vec::new();
+        for key in keys.iter().take(numkeys) {
+            if let Some(entry) = db.get(key) {
+                if let Value::ZSet(zset) = &entry.value {
+                    let members: Vec<Bytes> = zset.iter().map(|(_, m)| m.clone()).collect();
+                    member_sets.push(members);
+                } else {
+                    return wrong_type();
+                }
+            } else {
+                member_sets.push(vec![]);
+            }
+        }
+
+        if member_sets.is_empty() {
+            return RespType::Integer(0);
+        }
+
+        // Find members that exist in ALL sets
+        let mut intersection: Vec<Bytes> = Vec::new();
+        'member: for member in &member_sets[0] {
+            for set in &member_sets[1..] {
+                if !set.contains(member) {
+                    continue 'member;
+                }
+            }
+            intersection.push(member.clone());
+        }
+
+        // Compute aggregated scores
+        let mut result_zset = std::collections::BTreeSet::new();
+        for member in &intersection {
+            let mut score: i64 = 0;
+            let mut first = true;
+            for (i, key) in keys.iter().enumerate() {
+                if let Some(entry) = db.get(key) {
+                    if let Value::ZSet(zset) = &entry.value {
+                        for (s, m) in zset.iter() {
+                            if m == member {
+                                let weight = weights.get(i).copied().unwrap_or(1.0);
+                                let w = (*s as f64 * weight) as i64;
+                                match aggregate {
+                                    "MIN" => {
+                                        score = if first { w } else { score.min(w) };
+                                    }
+                                    "MAX" => {
+                                        score = if first { w } else { score.max(w) };
+                                    }
+                                    _ => {
+                                        if first {
+                                            score = w;
+                                        } else {
+                                            score += w;
+                                        }
+                                    }
+                                }
+                                first = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            result_zset.insert((score, member.clone()));
+        }
+
+        // Store result in destination key
+        let entry = db.entry(dest.to_string()).or_insert_with(|| {
+            crate::db::Entry::new(Value::ZSet(std::collections::BTreeSet::new()), None)
+        });
+        entry.value = Value::ZSet(result_zset.clone());
+        entry.version = crate::db::bump_version();
+        RespType::Integer(result_zset.len() as i64)
+    })
+}
+
+pub fn handle_zunionstore(
+    dest: &str,
+    numkeys: usize,
+    keys: &[String],
+    weights: &[f64],
+    aggregate: &str,
+) -> RespType {
+    with_db(|db| {
+        let scores = zset_aggregate(db, &keys[..numkeys], weights, aggregate);
+        let mut result_zset = std::collections::BTreeSet::new();
+        for (member, score) in scores {
+            result_zset.insert((score, member));
+        }
+        let entry = db.entry(dest.to_string()).or_insert_with(|| {
+            crate::db::Entry::new(Value::ZSet(std::collections::BTreeSet::new()), None)
+        });
+        entry.value = Value::ZSet(result_zset.clone());
+        entry.version = crate::db::bump_version();
+        RespType::Integer(result_zset.len() as i64)
+    })
+}
+
+pub fn handle_zinter(
+    numkeys: usize,
+    keys: &[String],
+    weights: &[f64],
+    aggregate: &str,
+    withscores: bool,
+) -> RespType {
+    with_db(|db| {
+        // Collect members per key for intersection
+        let mut member_sets: Vec<Vec<Bytes>> = Vec::new();
+        for key in keys.iter().take(numkeys) {
+            if let Some(entry) = db.get(key) {
+                if let Value::ZSet(zset) = &entry.value {
+                    member_sets.push(zset.iter().map(|(_, m)| m.clone()).collect());
+                } else {
+                    return wrong_type();
+                }
+            } else {
+                member_sets.push(vec![]);
+            }
+        }
+        if member_sets.is_empty() {
+            return RespType::Array(Some(vec![]));
+        }
+        let mut intersection: Vec<Bytes> = Vec::new();
+        'member: for member in &member_sets[0] {
+            for set in &member_sets[1..] {
+                if !set.contains(member) {
+                    continue 'member;
+                }
+            }
+            intersection.push(member.clone());
+        }
+        let mut result_zset = std::collections::BTreeSet::new();
+        for member in &intersection {
+            let mut score: i64 = 0;
+            let mut first = true;
+            for (i, key) in keys.iter().enumerate() {
+                if let Some(entry) = db.get(key) {
+                    if let Value::ZSet(zset) = &entry.value {
+                        for (s, m) in zset.iter() {
+                            if m == member {
+                                let w = weights.get(i).copied().unwrap_or(1.0);
+                                let ws = (*s as f64 * w) as i64;
+                                match aggregate {
+                                    "MIN" => {
+                                        score = if first { ws } else { score.min(ws) };
+                                    }
+                                    "MAX" => {
+                                        score = if first { ws } else { score.max(ws) };
+                                    }
+                                    _ => {
+                                        if first {
+                                            score = ws;
+                                        } else {
+                                            score += ws;
+                                        }
+                                    }
+                                }
+                                first = false;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            result_zset.insert((score, member.clone()));
+        }
+        let result: Vec<RespType> = result_zset
+            .iter()
+            .flat_map(|(s, m)| {
+                if withscores {
+                    vec![
+                        RespType::BulkString(Some(m.clone())),
+                        RespType::BulkString(Some(
+                            bytes::Bytes::copy_from_slice(s.to_string().as_bytes()),
+                        )),
+                    ]
+                } else {
+                    vec![RespType::BulkString(Some(m.clone()))]
+                }
+            })
+            .collect();
+        RespType::Array(Some(result))
+    })
+}
+
+pub fn handle_zunion(
+    numkeys: usize,
+    keys: &[String],
+    weights: &[f64],
+    aggregate: &str,
+    withscores: bool,
+) -> RespType {
+    with_db(|db| {
+        let scores = zset_aggregate(db, &keys[..numkeys], weights, aggregate);
+        let mut result_zset = std::collections::BTreeSet::new();
+        for (member, score) in scores {
+            result_zset.insert((score, member));
+        }
+        let result: Vec<RespType> = result_zset
+            .iter()
+            .flat_map(|(s, m)| {
+                if withscores {
+                    vec![
+                        RespType::BulkString(Some(m.clone())),
+                        RespType::BulkString(Some(
+                            bytes::Bytes::copy_from_slice(s.to_string().as_bytes()),
+                        )),
+                    ]
+                } else {
+                    vec![RespType::BulkString(Some(m.clone()))]
+                }
+            })
+            .collect();
+        RespType::Array(Some(result))
+    })
+}
+
+pub fn handle_zdiff(keys: &[String], withscores: bool) -> RespType {
+    with_db(|db| {
+        if keys.is_empty() || !db.contains_key(&keys[0]) {
+            return RespType::Array(Some(vec![]));
+        }
+        let first_set = match &db[&keys[0]].value {
+            Value::ZSet(z) => z.clone(),
+            _ => return wrong_type(),
+        };
+        // Collect members from all other sets
+        let other_members: std::collections::HashSet<Bytes> = keys[1..]
+            .iter()
+            .filter_map(|k| db.get(k))
+            .filter_map(|e| match &e.value {
+                Value::ZSet(z) => {
+                    Some(z.iter().map(|(_, m)| m.clone()).collect::<std::collections::HashSet<_>>())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+
+        let result: Vec<RespType> = first_set
+            .iter()
+            .filter(|(_, m)| !other_members.contains(m))
+            .flat_map(|(s, m)| {
+                if withscores {
+                    vec![
+                        RespType::BulkString(Some(m.clone())),
+                        RespType::BulkString(Some(
+                            bytes::Bytes::copy_from_slice(s.to_string().as_bytes()),
+                        )),
+                    ]
+                } else {
+                    vec![RespType::BulkString(Some(m.clone()))]
+                }
+            })
+            .collect();
+        RespType::Array(Some(result))
+    })
+}
+
+pub fn handle_zdiffstore(dest: &str, keys: &[String]) -> RespType {
+    with_db(|db| {
+        if keys.is_empty() || !db.contains_key(&keys[0]) {
+            let entry = db.entry(dest.to_string()).or_insert_with(|| {
+                crate::db::Entry::new(Value::ZSet(std::collections::BTreeSet::new()), None)
+            });
+            entry.value = Value::ZSet(std::collections::BTreeSet::new());
+            entry.version = crate::db::bump_version();
+            return RespType::Integer(0);
+        }
+        let first_set = match &db[&keys[0]].value {
+            Value::ZSet(z) => z.clone(),
+            _ => return wrong_type(),
+        };
+        let other_members: std::collections::HashSet<Bytes> = keys[1..]
+            .iter()
+            .filter_map(|k| db.get(k))
+            .filter_map(|e| match &e.value {
+                Value::ZSet(z) => {
+                    Some(z.iter().map(|(_, m)| m.clone()).collect::<std::collections::HashSet<_>>())
+                }
+                _ => None,
+            })
+            .flatten()
+            .collect();
+
+        let mut result_zset = std::collections::BTreeSet::new();
+        for (score, member) in first_set {
+            if !other_members.contains(&member) {
+                result_zset.insert((score, member));
+            }
+        }
+        let count = result_zset.len();
+        let entry = db.entry(dest.to_string()).or_insert_with(|| {
+            crate::db::Entry::new(Value::ZSet(std::collections::BTreeSet::new()), None)
+        });
+        entry.value = Value::ZSet(result_zset);
+        entry.version = crate::db::bump_version();
+        RespType::Integer(count as i64)
+    })
 }

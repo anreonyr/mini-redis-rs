@@ -780,6 +780,48 @@ pub fn init() {
         since_stage: 0,
         summary: "Returns the rank of a member in a sorted set, ordered high to low",
     });
+    reg.register(CommandInfo {
+        name: "ZINTERSTORE",
+        arity: -4,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Intersects multiple sorted sets and stores the result",
+    });
+    reg.register(CommandInfo {
+        name: "ZUNIONSTORE",
+        arity: -4,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Unions multiple sorted sets and stores the result",
+    });
+    reg.register(CommandInfo {
+        name: "ZDIFFSTORE",
+        arity: -4,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Subtracts multiple sorted sets and stores the result",
+    });
+    reg.register(CommandInfo {
+        name: "ZINTER",
+        arity: -3,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Intersects multiple sorted sets and returns the result",
+    });
+    reg.register(CommandInfo {
+        name: "ZUNION",
+        arity: -3,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Unions multiple sorted sets and returns the result",
+    });
+    reg.register(CommandInfo {
+        name: "ZDIFF",
+        arity: -3,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Subtracts multiple sorted sets and returns the result",
+    });
     // Transaction
     reg.register(CommandInfo {
         name: "MULTI",

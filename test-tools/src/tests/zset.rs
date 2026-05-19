@@ -207,3 +207,142 @@ pub async fn test_zrevrangebyscore(client: &mut RedisClient) -> Result<(), Strin
     crate::assert_resp!(r, arr_of_bulks(&["d", "c", "b"]), "ZREVRANGEBYSCORE");
     Ok(())
 }
+
+// ── ZSet Set Operations (intersection / union / difference) ──────────────
+
+pub async fn test_zinterstore_basic(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["FLUSHDB"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zis1", "1", "a", "2", "b", "3", "c"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zis2", "2", "b", "3", "c", "4", "d"]).await?;
+    let r = client.cmd(&["ZINTERSTORE", "test_rs:zis_dest", "2", "test_rs:zis1", "test_rs:zis2"]).await?;
+    crate::assert_resp!(r, int(2), "ZINTERSTORE count");
+    let r = client.cmd(&["ZRANGE", "test_rs:zis_dest", "0", "-1"]).await?;
+    crate::assert_resp!(r, arr_of_bulks(&["b", "c"]), "ZINTERSTORE members");
+    Ok(())
+}
+
+pub async fn test_zinterstore_aggregate(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["FLUSHDB"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zisa1", "1", "a", "2", "b"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zisa2", "10", "a", "20", "b"]).await?;
+    // SUM (default)
+    let r = client.cmd(&["ZINTERSTORE", "test_rs:zisa_sum", "2", "test_rs:zisa1", "test_rs:zisa2"]).await?;
+    crate::assert_resp!(r, int(2), "ZINTERSTORE SUM count");
+    let r = client.cmd(&["ZSCORE", "test_rs:zisa_sum", "a"]).await?;
+    match &r {
+        RespType::BulkString(Some(data)) => {
+            let s: i64 = String::from_utf8_lossy(data).parse().unwrap_or(0);
+            if s != 11 { return Err(format!("expected 11, got {}", s)); }
+        }
+        _ => return Err("ZSCORE: expected BulkString".to_string()),
+    }
+    Ok(())
+}
+
+pub async fn test_zunionstore_basic(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["FLUSHDB"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zus1", "1", "a", "2", "b"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zus2", "3", "c", "4", "d"]).await?;
+    let r = client.cmd(&["ZUNIONSTORE", "test_rs:zus_dest", "2", "test_rs:zus1", "test_rs:zus2"]).await?;
+    crate::assert_resp!(r, int(4), "ZUNIONSTORE count");
+    Ok(())
+}
+
+pub async fn test_zunionstore_weights(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["FLUSHDB"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zusw1", "1", "a", "2", "b"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zusw2", "3", "b", "4", "c"]).await?;
+    let r = client.cmd(&["ZUNIONSTORE", "test_rs:zusw_dest", "2", "test_rs:zusw1", "test_rs:zusw2",
+        "WEIGHTS", "2", "3"]).await?;
+    crate::assert_resp!(r, int(3), "ZUNIONSTORE WEIGHTS count");
+    // b from set1: 2*2=4, from set2: 3*3=9, sum=13
+    let r = client.cmd(&["ZSCORE", "test_rs:zusw_dest", "b"]).await?;
+    match &r {
+        RespType::BulkString(Some(data)) => {
+            let s: i64 = String::from_utf8_lossy(data).parse().unwrap_or(0);
+            if s != 13 { return Err(format!("expected 13, got {}", s)); }
+        }
+        _ => return Err("ZSCORE: expected BulkString".to_string()),
+    }
+    Ok(())
+}
+
+pub async fn test_zinter_basic(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["FLUSHDB"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zi1", "1", "a", "2", "b", "3", "c"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zi2", "2", "b", "3", "c", "4", "d"]).await?;
+    let r = client.cmd(&["ZINTER", "2", "test_rs:zi1", "test_rs:zi2"]).await?;
+    crate::assert_resp!(r, arr_of_bulks(&["b", "c"]), "ZINTER basic");
+    Ok(())
+}
+
+pub async fn test_zinter_withscores(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["FLUSHDB"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:ziws1", "1", "a", "2", "b"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:ziws2", "10", "a", "20", "b"]).await?;
+    let r = client.cmd(&["ZINTER", "2", "test_rs:ziws1", "test_rs:ziws2", "WITHSCORES"]).await?;
+    match &r {
+        RespType::Array(Some(items)) => {
+            if items.len() == 4 { Ok(()) }
+            else { Err(format!("ZINTER WITHSCORES: expected 4 items, got {}", items.len())) }
+        }
+        _ => Err(format!("ZINTER WITHSCORES: expected Array, got {}", r)),
+    }
+}
+
+pub async fn test_zunion_basic(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["FLUSHDB"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zu1", "1", "a", "2", "b"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zu2", "3", "c"]).await?;
+    let r = client.cmd(&["ZUNION", "2", "test_rs:zu1", "test_rs:zu2"]).await?;
+    crate::assert_resp!(r, arr_of_bulks(&["a", "b", "c"]), "ZUNION basic");
+    Ok(())
+}
+
+pub async fn test_zunion_withscores(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["FLUSHDB"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zuw1", "1", "a", "2", "b"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zuw2", "3", "a"]).await?;
+    let r = client.cmd(&["ZUNION", "2", "test_rs:zuw1", "test_rs:zuw2", "WITHSCORES"]).await?;
+    match &r {
+        RespType::Array(Some(items)) => {
+            if items.len() == 4 { Ok(()) }
+            else { Err(format!("ZUNION WITHSCORES: expected 4 items, got {}", items.len())) }
+        }
+        _ => Err(format!("ZUNION WITHSCORES: expected Array, got {}", r)),
+    }
+}
+
+pub async fn test_zdiff_basic(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["FLUSHDB"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zd1", "1", "a", "2", "b", "3", "c"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zd2", "2", "b", "4", "d"]).await?;
+    let r = client.cmd(&["ZDIFF", "2", "test_rs:zd1", "test_rs:zd2"]).await?;
+    crate::assert_resp!(r, arr_of_bulks(&["a", "c"]), "ZDIFF basic");
+    Ok(())
+}
+
+pub async fn test_zdiffstore_basic(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["FLUSHDB"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zds1", "1", "a", "2", "b", "3", "c"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zds2", "2", "b"]).await?;
+    let r = client.cmd(&["ZDIFFSTORE", "test_rs:zds_dest", "2", "test_rs:zds1", "test_rs:zds2"]).await?;
+    crate::assert_resp!(r, int(2), "ZDIFFSTORE count");
+    let r = client.cmd(&["ZRANGE", "test_rs:zds_dest", "0", "-1"]).await?;
+    crate::assert_resp!(r, arr_of_bulks(&["a", "c"]), "ZDIFFSTORE members");
+    Ok(())
+}
+
+pub async fn test_zdiff_withscores(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["FLUSHDB"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zdws1", "10", "a", "20", "b", "30", "c"]).await?;
+    let _ = client.cmd(&["ZADD", "test_rs:zdws2", "20", "b"]).await?;
+    let r = client.cmd(&["ZDIFF", "2", "test_rs:zdws1", "test_rs:zdws2", "WITHSCORES"]).await?;
+    match &r {
+        RespType::Array(Some(items)) => {
+            if items.len() == 4 { Ok(()) }
+            else { Err(format!("ZDIFF WITHSCORES: expected 4 items, got {}", items.len())) }
+        }
+        _ => Err(format!("ZDIFF WITHSCORES: expected Array, got {}", r)),
+    }
+}

@@ -402,6 +402,44 @@ pub enum ParsedCmd {
         newkey: String,
     },
     Randomkey,
+    // ZSet Set Operations
+    ZInter {
+        numkeys: usize,
+        keys: Vec<String>,
+        weights: Vec<f64>,
+        aggregate: String,
+        withscores: bool,
+    },
+    ZInterStore {
+        dest: String,
+        numkeys: usize,
+        keys: Vec<String>,
+        weights: Vec<f64>,
+        aggregate: String,
+    },
+    ZUnion {
+        numkeys: usize,
+        keys: Vec<String>,
+        weights: Vec<f64>,
+        aggregate: String,
+        withscores: bool,
+    },
+    ZUnionStore {
+        dest: String,
+        numkeys: usize,
+        keys: Vec<String>,
+        weights: Vec<f64>,
+        aggregate: String,
+    },
+    ZDiff {
+        numkeys: usize,
+        keys: Vec<String>,
+        withscores: bool,
+    },
+    ZDiffStore {
+        dest: String,
+        keys: Vec<String>,
+    },
     // Auth
     Auth {
         password: String,
@@ -629,6 +667,12 @@ impl ParsedCmd {
             ParsedCmd::Sscan { .. } => "SSCAN",
             ParsedCmd::Hscan { .. } => "HSCAN",
             ParsedCmd::Zscan { .. } => "ZSCAN",
+            ParsedCmd::ZInter { .. } => "ZINTER",
+            ParsedCmd::ZInterStore { .. } => "ZINTERSTORE",
+            ParsedCmd::ZUnion { .. } => "ZUNION",
+            ParsedCmd::ZUnionStore { .. } => "ZUNIONSTORE",
+            ParsedCmd::ZDiff { .. } => "ZDIFF",
+            ParsedCmd::ZDiffStore { .. } => "ZDIFFSTORE",
         }
     }
 }

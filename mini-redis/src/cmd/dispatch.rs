@@ -213,6 +213,41 @@ async fn dispatch_match<'a>(
             withscores,
             limit,
         } => handlers::handle_zrevrangebyscore(&key, &max, &min, withscores, limit),
+        // ZSet Set Operations
+        ParsedCmd::ZInter {
+            numkeys,
+            keys,
+            weights,
+            aggregate,
+            withscores,
+        } => handlers::handle_zinter(numkeys, &keys, &weights, &aggregate, withscores),
+        ParsedCmd::ZInterStore {
+            dest,
+            numkeys,
+            keys,
+            weights,
+            aggregate,
+        } => handlers::handle_zinterstore(&dest, numkeys, &keys, &weights, &aggregate),
+        ParsedCmd::ZUnion {
+            numkeys,
+            keys,
+            weights,
+            aggregate,
+            withscores,
+        } => handlers::handle_zunion(numkeys, &keys, &weights, &aggregate, withscores),
+        ParsedCmd::ZUnionStore {
+            dest,
+            numkeys,
+            keys,
+            weights,
+            aggregate,
+        } => handlers::handle_zunionstore(&dest, numkeys, &keys, &weights, &aggregate),
+        ParsedCmd::ZDiff { keys, withscores, .. } => {
+            handlers::handle_zdiff(&keys, withscores)
+        }
+        ParsedCmd::ZDiffStore { dest, keys } => {
+            handlers::handle_zdiffstore(&dest, &keys)
+        }
         // Key Management
         ParsedCmd::Del { keys } => handlers::handle_del(&keys),
         ParsedCmd::Exists { keys } => handlers::handle_exists(&keys),

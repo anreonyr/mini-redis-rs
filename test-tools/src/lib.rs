@@ -729,6 +729,29 @@ tree_tests! {
         ("ZREVRANGEBYSCORE", "New") [
             "ZREVRANGEBYSCORE"          => tests::zset::test_zrevrangebyscore,
         ],
+        ("ZINTERSTORE", "New") [
+            "ZINTERSTORE basic"         => tests::zset::test_zinterstore_basic,
+            "ZINTERSTORE aggregate"     => tests::zset::test_zinterstore_aggregate,
+        ],
+        ("ZUNIONSTORE", "New") [
+            "ZUNIONSTORE basic"         => tests::zset::test_zunionstore_basic,
+            "ZUNIONSTORE weights"       => tests::zset::test_zunionstore_weights,
+        ],
+        ("ZINTER", "New") [
+            "ZINTER basic"              => tests::zset::test_zinter_basic,
+            "ZINTER withscores"         => tests::zset::test_zinter_withscores,
+        ],
+        ("ZUNION", "New") [
+            "ZUNION basic"              => tests::zset::test_zunion_basic,
+            "ZUNION withscores"         => tests::zset::test_zunion_withscores,
+        ],
+        ("ZDIFF", "New") [
+            "ZDIFF basic"               => tests::zset::test_zdiff_basic,
+            "ZDIFF withscores"          => tests::zset::test_zdiff_withscores,
+        ],
+        ("ZDIFFSTORE", "New") [
+            "ZDIFFSTORE basic"          => tests::zset::test_zdiffstore_basic,
+        ],
         ("ZSCAN", "New") [
             "ZSCAN basic"           => tests::scan::test_zscan_basic,
             "ZSCAN MATCH"           => tests::scan::test_zscan_match,
