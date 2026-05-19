@@ -706,6 +706,19 @@ tree_tests! {
             "AUTH disabled"             => tests::auth::test_auth_disabled,
         ],
     ],
+    ("Persistence", "Persistence") [
+        ("SAVE", "New") [
+            "SAVE basic"           => tests::persistence::test_save_basic,
+            "SAVE roundtrip types" => tests::persistence::test_save_roundtrip,
+        ],
+        ("BGSAVE", "New") [
+            "BGSAVE"               => tests::persistence::test_bgsave,
+        ],
+        ("CONFIG", "New") [
+            "CONFIG GET dir"       => tests::persistence::test_config_get_dir,
+            "CONFIG SET dir"       => tests::persistence::test_config_set_dir,
+        ],
+    ],
 }
 
 pub struct BenchmarkDef {
