@@ -222,12 +222,13 @@ pub async fn handle_exec(state: &mut ConnectionState) -> RespType {
         None => return RespType::Error("ERR EXEC without MULTI".to_string()),
     };
 
-    // Check watched keys (from state-level watching, not TransactionState)
-    for (key, recorded_version) in &state.watching {
-        if db::key_version(key) != Some(*recorded_version) {
-            // Key changed — transaction aborted, return nil array
-            return RespType::Array(None);
-        }
+    // Check watched keys (unwrap_or(0) matches handle_watch's unwrap_or(0) for missing keys)
+    let abort = state.watching.iter().any(|(key, recorded_version)| {
+        db::key_version(key).unwrap_or(0) != *recorded_version
+    });
+    state.watching.clear();
+    if abort {
+        return RespType::Array(None);
     }
 
     // Execute queue
@@ -245,6 +246,7 @@ pub fn handle_discard(state: &mut ConnectionState) -> RespType {
         return RespType::Error("ERR DISCARD without MULTI".to_string());
     }
     state.transaction = None;
+    state.watching.clear();
     RespType::SimpleString("OK".to_string())
 }
 
