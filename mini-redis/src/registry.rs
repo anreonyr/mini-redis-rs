@@ -688,6 +688,42 @@ pub fn init() {
         since_stage: 0,
         summary: "Returns the rank of a member in a sorted set, ordered high to low",
     });
+    // Transaction
+    reg.register(CommandInfo {
+        name: "MULTI",
+        arity: 1,
+        category: "Transaction",
+        since_stage: 0,
+        summary: "Marks the start of a transaction block",
+    });
+    reg.register(CommandInfo {
+        name: "EXEC",
+        arity: 1,
+        category: "Transaction",
+        since_stage: 0,
+        summary: "Executes all commands in a transaction block",
+    });
+    reg.register(CommandInfo {
+        name: "DISCARD",
+        arity: 1,
+        category: "Transaction",
+        since_stage: 0,
+        summary: "Discards all commands in a transaction block",
+    });
+    reg.register(CommandInfo {
+        name: "WATCH",
+        arity: -2,
+        category: "Transaction",
+        since_stage: 0,
+        summary: "Watches one or more keys for changes",
+    });
+    reg.register(CommandInfo {
+        name: "UNWATCH",
+        arity: 1,
+        category: "Transaction",
+        since_stage: 0,
+        summary: "Forgets all watched keys",
+    });
 }
 
 pub fn with_registry<F, R>(f: F) -> R

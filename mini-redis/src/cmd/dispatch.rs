@@ -1,3 +1,6 @@
+use std::future::Future;
+use std::pin::Pin;
+
 use crate::config;
 use crate::resp;
 
@@ -5,13 +8,17 @@ use super::auth::{self, ConnectionState};
 use super::handlers;
 use super::types::{CmdError, ParsedCmd};
 
-pub async fn dispatch_command(
+/// Dispatch a parsed command to its handler.
+///
+/// Returns a boxed future to break potential async recursion through EXEC
+/// (dispatch_command -> handle_exec -> dispatch_command -> ...).
+pub fn dispatch_command<'a>(
     cmd: Result<ParsedCmd, CmdError>,
-    state: &mut ConnectionState,
-) -> resp::RespType {
+    state: &'a mut ConnectionState,
+) -> Pin<Box<dyn Future<Output = resp::RespType> + Send + 'a>> {
     let parsed = match cmd {
         Ok(c) => c,
-        Err(e) => return resp::RespType::Error(e.to_string()),
+        Err(e) => return Box::pin(async move { resp::RespType::Error(e.to_string()) }),
     };
 
     // Auth check: if requirepass is set and not authenticated and not a bypass command, reject
@@ -19,9 +26,33 @@ pub async fn dispatch_command(
         && config::with_config(|cfg| cfg.requirepass_is_set())
         && !auth::is_allowed_before_auth(parsed.name())
     {
-        return resp::RespType::Error("NOAUTH Authentication required.".to_string());
+        return Box::pin(async {
+            resp::RespType::Error("NOAUTH Authentication required.".to_string())
+        });
     }
 
+    // Transaction queueing: if in a transaction and command is queueable
+    if let Some(ref mut tx) = state.transaction {
+        let bypass = matches!(&parsed,
+            ParsedCmd::Multi | ParsedCmd::Exec
+            | ParsedCmd::Discard | ParsedCmd::Watch { .. }
+            | ParsedCmd::Unwatch
+        );
+        if !bypass {
+            tx.queue.push(parsed);
+            return Box::pin(async { resp::RespType::SimpleString("QUEUED".to_string()) });
+        }
+    }
+
+    Box::pin(dispatch_match(parsed, state))
+}
+
+/// The inner async dispatch match. Separated from `dispatch_command` so that
+/// the latter can return a boxed future, breaking async recursion through EXEC.
+async fn dispatch_match<'a>(
+    parsed: ParsedCmd,
+    state: &'a mut ConnectionState,
+) -> resp::RespType {
     match parsed {
         ParsedCmd::Ping => handlers::handle_ping(),
         ParsedCmd::Echo { message } => handlers::handle_echo(&message),
@@ -177,5 +208,11 @@ pub async fn dispatch_command(
         ParsedCmd::Save => handlers::handle_save(),
         ParsedCmd::Bgsave => handlers::handle_bgsave(),
         ParsedCmd::Shutdown => handlers::handle_shutdown(),
+        // Transaction
+        ParsedCmd::Multi => handlers::handle_multi(state),
+        ParsedCmd::Exec => handlers::handle_exec(state).await,
+        ParsedCmd::Discard => handlers::handle_discard(state),
+        ParsedCmd::Watch { keys } => handlers::handle_watch(state, &keys),
+        ParsedCmd::Unwatch => handlers::handle_unwatch(state),
     }
 }

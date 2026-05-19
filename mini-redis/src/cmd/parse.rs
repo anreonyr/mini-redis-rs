@@ -864,6 +864,16 @@ impl ParsedCmd {
             "SAVE" => ParsedCmd::Save,
             "BGSAVE" => ParsedCmd::Bgsave,
             "SHUTDOWN" => ParsedCmd::Shutdown,
+            "MULTI" => ParsedCmd::Multi,
+            "EXEC" => ParsedCmd::Exec,
+            "DISCARD" => ParsedCmd::Discard,
+            "UNWATCH" => ParsedCmd::Unwatch,
+            "WATCH" => {
+                if args.is_empty() {
+                    return Err(wrong_arg_count("watch"));
+                }
+                ParsedCmd::Watch { keys: args }
+            }
             _ => return Err(CmdError::UnknownCommand),
         })
     }

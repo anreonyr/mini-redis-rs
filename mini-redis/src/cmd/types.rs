@@ -363,6 +363,14 @@ pub enum ParsedCmd {
     Bgsave,
     Save,
     Shutdown,
+    // Transaction
+    Discard,
+    Exec,
+    Multi,
+    Unwatch,
+    Watch {
+        keys: Vec<String>,
+    },
 }
 
 impl ParsedCmd {
@@ -460,6 +468,11 @@ impl ParsedCmd {
             ParsedCmd::Bgsave => "BGSAVE",
             ParsedCmd::Save => "SAVE",
             ParsedCmd::Shutdown => "SHUTDOWN",
+            ParsedCmd::Discard => "DISCARD",
+            ParsedCmd::Exec => "EXEC",
+            ParsedCmd::Multi => "MULTI",
+            ParsedCmd::Unwatch => "UNWATCH",
+            ParsedCmd::Watch { .. } => "WATCH",
         }
     }
 }

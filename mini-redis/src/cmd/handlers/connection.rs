@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use bytes::Bytes;
 
+use crate::cmd::auth::{ConnectionState, TransactionState};
 use crate::config;
 use crate::db;
 use crate::registry;
@@ -203,4 +204,69 @@ pub fn handle_shutdown() -> RespType {
         return RespType::Error(format!("ERR {}", e));
     }
     std::process::exit(0);
+}
+
+// Transaction handlers
+
+pub fn handle_multi(state: &mut ConnectionState) -> RespType {
+    if state.transaction.is_some() {
+        return RespType::Error("ERR MULTI calls can not be nested".to_string());
+    }
+    state.transaction = Some(TransactionState::new());
+    RespType::SimpleString("OK".to_string())
+}
+
+pub async fn handle_exec(state: &mut ConnectionState) -> RespType {
+    let tx = match state.transaction.take() {
+        Some(tx) => tx,
+        None => return RespType::Error("ERR EXEC without MULTI".to_string()),
+    };
+
+    // Check watched keys
+    for (key, recorded_version) in &tx.watching {
+        if db::key_version(key) != Some(*recorded_version) {
+            // Key changed -- transaction aborted, return nil array
+            return RespType::Array(None);
+        }
+    }
+
+    // Execute queue
+    let mut results = Vec::with_capacity(tx.queue.len());
+    for cmd in tx.queue {
+        let response = crate::cmd::dispatch_command(Ok(cmd), state).await;
+        results.push(response);
+    }
+
+    RespType::Array(Some(results))
+}
+
+pub fn handle_discard(state: &mut ConnectionState) -> RespType {
+    if state.transaction.is_none() {
+        return RespType::Error("ERR DISCARD without MULTI".to_string());
+    }
+    state.transaction = None;
+    RespType::SimpleString("OK".to_string())
+}
+
+pub fn handle_watch(state: &mut ConnectionState, keys: &[String]) -> RespType {
+    let versions: HashMap<String, u64> = keys
+        .iter()
+        .map(|k| (k.clone(), db::key_version(k).unwrap_or(0)))
+        .collect();
+
+    if let Some(tx) = &mut state.transaction {
+        tx.watching.extend(versions);
+    } else {
+        let mut tx = TransactionState::new();
+        tx.watching = versions;
+        state.transaction = Some(tx);
+    }
+    RespType::SimpleString("OK".to_string())
+}
+
+pub fn handle_unwatch(state: &mut ConnectionState) -> RespType {
+    if let Some(tx) = &mut state.transaction {
+        tx.watching.clear();
+    }
+    RespType::SimpleString("OK".to_string())
 }
