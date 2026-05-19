@@ -42,3 +42,11 @@
 实现 2 个服务器管理命令。
 - 修改文件：`cmd/types.rs`、`cmd/parse.rs`、`cmd/dispatch.rs`、`registry.rs`、`cmd/handlers/connection.rs`、`test-tools/src/tests/server.rs`、`test-tools/src/lib.rs`
 - 验收：所有 server 测试通过 + 编译无误 + 最终回归验证
+
+## Phase 04-auth: 鉴权系统
+
+### 任务 04-auth: AUTH + requirepass <!-- @depends:(none) @code_agents:1 -->
+实现 Redis 密码鉴权系统。
+- 新增文件：`config.rs`、`cmd/auth.rs`、`test-tools/src/tests/auth.rs`
+- 修改文件：`cmd/types.rs`、`cmd/parse.rs`、`cmd/dispatch.rs`、`cmd/handlers/connection.rs`、`cmd/mod.rs`、`cmd/handlers/mod.rs`、`lib.rs`、`registry.rs`、`main.rs`、`test-tools/src/tests/mod.rs`、`test-tools/src/lib.rs`
+- 验收：所有 auth 测试通过 + 已有测试零回归

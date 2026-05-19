@@ -1,5 +1,6 @@
 use bytes::Bytes;
 
+use crate::config;
 use crate::registry;
 use crate::resp::RespType;
 
@@ -90,15 +91,50 @@ pub fn handle_info(section: Option<String>) -> RespType {
 }
 
 pub fn handle_config_get(parameter: &str) -> RespType {
-    let value = match parameter.to_lowercase().as_str() {
-        "dir" => ".",
-        "dbfilename" => "dump.rdb",
-        "maxclients" => "10000",
-        "databases" => "1",
-        _ => return RespType::Array(Some(vec![])),
-    };
-    RespType::Array(Some(vec![
-        RespType::BulkString(Some(bytes::Bytes::copy_from_slice(parameter.as_bytes()))),
-        RespType::BulkString(Some(bytes::Bytes::copy_from_slice(value.as_bytes()))),
-    ]))
+    match parameter.to_lowercase().as_str() {
+        "dir" => RespType::Array(Some(vec![
+            RespType::BulkString(Some(bytes::Bytes::copy_from_slice(parameter.as_bytes()))),
+            RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"."))),
+        ])),
+        "dbfilename" => RespType::Array(Some(vec![
+            RespType::BulkString(Some(bytes::Bytes::copy_from_slice(parameter.as_bytes()))),
+            RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"dump.rdb"))),
+        ])),
+        "maxclients" => RespType::Array(Some(vec![
+            RespType::BulkString(Some(bytes::Bytes::copy_from_slice(parameter.as_bytes()))),
+            RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"10000"))),
+        ])),
+        "databases" => RespType::Array(Some(vec![
+            RespType::BulkString(Some(bytes::Bytes::copy_from_slice(parameter.as_bytes()))),
+            RespType::BulkString(Some(bytes::Bytes::copy_from_slice(b"1"))),
+        ])),
+        "requirepass" => {
+            let pw = config::with_config(|cfg| cfg.requirepass.clone());
+            match pw {
+                Some(p) => RespType::Array(Some(vec![
+                    RespType::BulkString(Some(bytes::Bytes::copy_from_slice(
+                        parameter.as_bytes(),
+                    ))),
+                    RespType::BulkString(Some(bytes::Bytes::copy_from_slice(p.as_bytes()))),
+                ])),
+                None => RespType::Array(Some(vec![])),
+            }
+        }
+        _ => RespType::Array(Some(vec![])),
+    }
+}
+
+pub fn handle_config_set(parameter: &str, value: &str) -> RespType {
+    match parameter.to_lowercase().as_str() {
+        "requirepass" => {
+            let pw = if value.is_empty() || value == "\"\"" {
+                None
+            } else {
+                Some(value.to_string())
+            };
+            config::with_config_mut(|cfg| cfg.requirepass = pw);
+            RespType::SimpleString("OK".to_string())
+        }
+        _ => RespType::Error("ERR unknown config parameter".to_string()),
+    }
 }

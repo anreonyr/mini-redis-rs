@@ -698,6 +698,14 @@ tree_tests! {
             "ZADD on string"            => tests::wrongtype::test_wrongtype_zadd_on_string,
         ],
     ],
+    ("Auth", "Auth") [
+        ("AUTH", "New") [
+            "AUTH basic flow"           => tests::auth::test_auth_basic,
+            "AUTH bypass commands"      => tests::auth::test_auth_bypass,
+            "AUTH config"               => tests::auth::test_auth_config,
+            "AUTH disabled"             => tests::auth::test_auth_disabled,
+        ],
+    ],
 }
 
 pub struct BenchmarkDef {

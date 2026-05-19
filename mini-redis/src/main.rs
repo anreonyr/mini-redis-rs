@@ -1,4 +1,4 @@
-use mini_redis::{cmd, db, inline, registry, resp};
+use mini_redis::{cmd, config, db, inline, registry, resp};
 use std::time::Duration;
 use tokio::time::Instant;
 
@@ -12,6 +12,14 @@ use tokio::task::JoinSet;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     registry::init();
+
+    // Parse --requirepass CLI arg
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(pos) = args.iter().position(|a| a == "--requirepass") {
+        if let Some(password) = args.get(pos + 1) {
+            config::set_requirepass_from_cli(password.clone());
+        }
+    }
 
     let listener = TcpListener::bind("127.0.0.1:6379")
         .await
@@ -78,6 +86,7 @@ async fn handle_connection(mut stream: tokio::net::TcpStream) -> anyhow::Result<
     let mut read_buf = [0u8; 8192];
     let mut pending = Vec::new();
     let mut inline_mode = false;
+    let mut state = cmd::ConnectionState::new();
 
     loop {
         let n = stream
@@ -105,9 +114,9 @@ async fn handle_connection(mut stream: tokio::net::TcpStream) -> anyhow::Result<
         }
 
         if inline_mode {
-            process_inline(&mut pending, &mut stream).await?;
+            process_inline(&mut pending, &mut stream, &mut state).await?;
         } else {
-            process_resp(&decoder, &mut pending, &mut stream).await?;
+            process_resp(&decoder, &mut pending, &mut stream, &mut state).await?;
         }
     }
 }
@@ -115,6 +124,7 @@ async fn handle_connection(mut stream: tokio::net::TcpStream) -> anyhow::Result<
 async fn process_inline(
     pending: &mut Vec<u8>,
     stream: &mut tokio::net::TcpStream,
+    state: &mut cmd::ConnectionState,
 ) -> anyhow::Result<()> {
     // Clean the buffer before processing lines
     strip_iac(pending);
@@ -136,7 +146,7 @@ async fn process_inline(
             Ok(args) => {
                 let cmd = args[0].to_uppercase();
                 let cmd_args: Vec<String> = args[1..].to_vec();
-                let response = cmd::dispatch_command(cmd::ParsedCmd::parse(&cmd, cmd_args)).await;
+                let response = cmd::dispatch_command(cmd::ParsedCmd::parse(&cmd, cmd_args), state).await;
                 send_response(stream, &response).await?;
             }
             Err(e) => {
@@ -152,6 +162,7 @@ async fn process_resp(
     decoder: &resp::Decoder,
     pending: &mut Vec<u8>,
     stream: &mut tokio::net::TcpStream,
+    state: &mut cmd::ConnectionState,
 ) -> anyhow::Result<()> {
     loop {
         match decoder.decode(pending) {
@@ -160,7 +171,7 @@ async fn process_resp(
                 println!("received: {}", frame);
 
                 if let Some(cmd) = cmd::parse_command(&frame) {
-                    let response = cmd::dispatch_command(cmd).await;
+                    let response = cmd::dispatch_command(cmd, state).await;
                     send_response(stream, &response).await?;
                 }
             }

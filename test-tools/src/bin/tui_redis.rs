@@ -23,11 +23,13 @@ struct Category {
 
 const CATEGORIES: &[Category] = &[
     Category { name: "Base",       stages: "Base",    filters: &["Base"] },
+    Category { name: "Key",        stages: "Key",     filters: &["Key"] },
     Category { name: "List",       stages: "List",    filters: &["List"] },
     Category { name: "Stream",     stages: "Stream",  filters: &["Stream"] },
     Category { name: "Hash",       stages: "Hash",    filters: &["Hash"] },
     Category { name: "Set",        stages: "Set",     filters: &["Set"] },
     Category { name: "ZSet",       stages: "ZSet",    filters: &["ZSet"] },
+    Category { name: "Auth",       stages: "Auth",    filters: &["Auth"] },
 ];
 
 // ── Hierarchical select items ────────────────────────────────────────────

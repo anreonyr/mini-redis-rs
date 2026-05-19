@@ -240,11 +240,18 @@ impl ParsedCmd {
                 }
                 let mut iter = args.into_iter();
                 let sub = iter.next().unwrap().to_uppercase();
-                if sub != "GET" {
-                    return Err(CmdError::SyntaxError);
+                match sub.as_str() {
+                    "GET" => {
+                        let parameter = iter.next().unwrap();
+                        ParsedCmd::ConfigGet { parameter }
+                    }
+                    "SET" => {
+                        let parameter = iter.next().unwrap();
+                        let value = iter.next().ok_or_else(|| wrong_arg_count("config"))?;
+                        ParsedCmd::ConfigSet { parameter, value }
+                    }
+                    _ => return Err(CmdError::SyntaxError),
                 }
-                let parameter = iter.next().unwrap();
-                ParsedCmd::ConfigGet { parameter }
             }
             // Streams
             "XADD" => {
@@ -847,6 +854,13 @@ impl ParsedCmd {
                 ParsedCmd::Renamenx { key, newkey }
             }
             "RANDOMKEY" => ParsedCmd::Randomkey,
+            "AUTH" => {
+                let password = args
+                    .into_iter()
+                    .next()
+                    .ok_or_else(|| wrong_arg_count("auth"))?;
+                ParsedCmd::Auth { password }
+            }
             _ => return Err(CmdError::UnknownCommand),
         })
     }

@@ -1,0 +1,41 @@
+use std::sync::{LazyLock, Mutex};
+
+pub struct ServerConfig {
+    pub requirepass: Option<String>,
+}
+
+impl ServerConfig {
+    pub fn new() -> Self {
+        let password = std::env::var("REDIS_PASSWORD").ok().filter(|s| !s.is_empty());
+        Self { requirepass: password }
+    }
+
+    pub fn requirepass_is_set(&self) -> bool {
+        self.requirepass.is_some()
+    }
+}
+
+static CONFIG: LazyLock<Mutex<ServerConfig>> =
+    LazyLock::new(|| Mutex::new(ServerConfig::new()));
+
+pub fn with_config<F, R>(f: F) -> R
+where
+    F: FnOnce(&ServerConfig) -> R,
+{
+    let cfg = CONFIG.lock().unwrap();
+    f(&cfg)
+}
+
+pub fn with_config_mut<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut ServerConfig) -> R,
+{
+    let mut cfg = CONFIG.lock().unwrap();
+    f(&mut cfg)
+}
+
+/// Override requirepass from CLI args (called once at startup).
+pub fn set_requirepass_from_cli(password: String) {
+    let mut cfg = CONFIG.lock().unwrap();
+    cfg.requirepass = Some(password);
+}

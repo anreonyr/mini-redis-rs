@@ -431,6 +431,14 @@ pub fn init() {
         since_stage: 0,
         summary: "Returns a range of members in a sorted set, by score, in reverse order",
     });
+    // Auth
+    reg.register(CommandInfo {
+        name: "AUTH",
+        arity: 2,
+        category: "Connection",
+        since_stage: 0,
+        summary: "Authenticates the connection using a password",
+    });
     // More Key
     reg.register(CommandInfo {
         name: "RENAME",
