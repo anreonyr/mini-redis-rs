@@ -10,6 +10,7 @@ pub(super) mod zset;
 pub(super) mod hyperloglog;
 pub(super) mod scan;
 pub(super) mod bitmap;
+pub(super) mod geo;
 
 pub(super) use connection::*;
 pub(super) use expiry::*;
@@ -23,3 +24,4 @@ pub(super) use zset::*;
 pub(super) use hyperloglog::*;
 pub(super) use scan::*;
 pub(super) use bitmap::*;
+pub(super) use geo::*;

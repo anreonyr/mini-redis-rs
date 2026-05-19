@@ -447,6 +447,44 @@ pub enum ParsedCmd {
     Bgsave,
     Save,
     Shutdown,
+    // Geo
+    GeoAdd {
+        key: String,
+        members: Vec<(f64, f64, String)>, // (lon, lat, member)
+    },
+    GeoDist {
+        key: String,
+        member1: String,
+        member2: String,
+        unit: String,
+    },
+    GeoHash {
+        key: String,
+        members: Vec<String>,
+    },
+    GeoPos {
+        key: String,
+        members: Vec<String>,
+    },
+    GeoRadius {
+        key: String,
+        longitude: f64,
+        latitude: f64,
+        radius: f64,
+        unit: String,
+        withcoord: bool,
+        withdist: bool,
+        count: Option<u64>,
+    },
+    GeoRadiusByMember {
+        key: String,
+        member: String,
+        radius: f64,
+        unit: String,
+        withcoord: bool,
+        withdist: bool,
+        count: Option<u64>,
+    },
     // Transaction
     Discard,
     Exec,
@@ -642,6 +680,12 @@ impl ParsedCmd {
             ParsedCmd::Bgsave => "BGSAVE",
             ParsedCmd::Save => "SAVE",
             ParsedCmd::Shutdown => "SHUTDOWN",
+            ParsedCmd::GeoAdd { .. } => "GEOADD",
+            ParsedCmd::GeoDist { .. } => "GEODIST",
+            ParsedCmd::GeoHash { .. } => "GEOHASH",
+            ParsedCmd::GeoPos { .. } => "GEOPOS",
+            ParsedCmd::GeoRadius { .. } => "GEORADIUS",
+            ParsedCmd::GeoRadiusByMember { .. } => "GEORADIUSBYMEMBER",
             ParsedCmd::Discard => "DISCARD",
             ParsedCmd::Exec => "EXEC",
             ParsedCmd::Multi => "MULTI",

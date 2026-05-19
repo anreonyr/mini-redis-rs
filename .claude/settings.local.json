@@ -27,7 +27,8 @@
       "Bash(Start-Sleep 2)",
       "PowerShell(cargo run *)",
       "PowerShell(Stop-Process *)",
-      "Bash(Select-String -Pattern \"Transaction\" -Context 2)"
+      "Bash(Select-String -Pattern \"Transaction\" -Context 2)",
+      "Bash(curl -s *)"
     ]
   }
 }

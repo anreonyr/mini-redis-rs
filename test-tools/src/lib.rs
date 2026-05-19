@@ -826,6 +826,39 @@ tree_tests! {
             "BITPOS"              => tests::bitmap::test_bitpos,
         ],
     ],
+    ("Geo", "Geo") [
+        ("GEOADD", "New") [
+            "GEOADD single"             => tests::geo::test_geoadd_basic,
+            "GEOADD multiple"           => tests::geo::test_geoadd_multiple,
+            "GEOADD update"             => tests::geo::test_geoadd_update,
+            "GEOADD wrong arg count"    => tests::geo::test_geoadd_wrong_arg_count,
+        ],
+        ("GEOPOS", "New") [
+            "GEOPOS basic"              => tests::geo::test_geopos_basic,
+            "GEOPOS nonexistent"        => tests::geo::test_geopos_nonexistent,
+        ],
+        ("GEODIST", "New") [
+            "GEODIST basic"             => tests::geo::test_geodist_basic,
+            "GEODIST nonexistent"       => tests::geo::test_geodist_nonexistent,
+        ],
+        ("GEOHASH", "New") [
+            "GEOHASH basic"             => tests::geo::test_geohash_basic,
+            "GEOHASH nonexistent"       => tests::geo::test_geohash_nonexistent,
+        ],
+        ("GEORADIUS", "New") [
+            "GEORADIUS basic"           => tests::geo::test_georadius_basic,
+            "GEORADIUS WITH DIST"       => tests::geo::test_georadius_withdist,
+            "GEORADIUS WITHCOORD"       => tests::geo::test_georadius_withcoord,
+            "GEORADIUS COUNT"           => tests::geo::test_georadius_count,
+        ],
+        ("GEORADIUSBYMEMBER", "New") [
+            "GEORADIUSBYMEMBER basic"           => tests::geo::test_georadiusbymember_basic,
+            "GEORADIUSBYMEMBER nonexistent"     => tests::geo::test_georadiusbymember_nonexistent,
+        ],
+        ("WRONGTYPE", "New") [
+            "GEOADD on string"          => tests::geo::test_geo_wrongtype,
+        ],
+    ],
     ("HyperLogLog", "HyperLogLog") [
         ("PFADD", "New") [
             "PFADD basic"              => tests::hyperloglog::test_pfadd_basic,

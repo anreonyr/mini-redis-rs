@@ -923,6 +923,49 @@ pub fn init() {
         since_stage: 0,
         summary: "Finds the first set or clear bit",
     });
+    // Geo
+    reg.register(CommandInfo {
+        name: "GEOADD",
+        arity: -5,
+        category: "Geo",
+        since_stage: 0,
+        summary: "Adds one or more geospatial items to a sorted set",
+    });
+    reg.register(CommandInfo {
+        name: "GEODIST",
+        arity: -4,
+        category: "Geo",
+        since_stage: 0,
+        summary: "Returns the distance between two members of a geospatial index",
+    });
+    reg.register(CommandInfo {
+        name: "GEOHASH",
+        arity: -3,
+        category: "Geo",
+        since_stage: 0,
+        summary: "Returns a geohash string for one or more members",
+    });
+    reg.register(CommandInfo {
+        name: "GEOPOS",
+        arity: -3,
+        category: "Geo",
+        since_stage: 0,
+        summary: "Returns the longitude and latitude of one or more members",
+    });
+    reg.register(CommandInfo {
+        name: "GEORADIUS",
+        arity: -6,
+        category: "Geo",
+        since_stage: 0,
+        summary: "Queries a geospatial index for members within a radius",
+    });
+    reg.register(CommandInfo {
+        name: "GEORADIUSBYMEMBER",
+        arity: -5,
+        category: "Geo",
+        since_stage: 0,
+        summary: "Queries a geospatial index for members within a radius, using a member as center",
+    });
     // HyperLogLog
     reg.register(CommandInfo {
         name: "PFADD",

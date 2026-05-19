@@ -265,6 +265,17 @@ async fn dispatch_match<'a>(
         ParsedCmd::Save => handlers::handle_save(),
         ParsedCmd::Bgsave => handlers::handle_bgsave(),
         ParsedCmd::Shutdown => handlers::handle_shutdown(),
+        // Geo
+        ParsedCmd::GeoAdd { key, members } => handlers::handle_geoadd(&key, &members),
+        ParsedCmd::GeoDist { key, member1, member2, unit } => handlers::handle_geodist(&key, &member1, &member2, &unit),
+        ParsedCmd::GeoHash { key, members } => handlers::handle_geohash(&key, &members),
+        ParsedCmd::GeoPos { key, members } => handlers::handle_geopos(&key, &members),
+        ParsedCmd::GeoRadius { key, longitude, latitude, radius, unit, withcoord, withdist, count } => {
+            handlers::handle_georadius(&key, longitude, latitude, radius, &unit, withcoord, withdist, count)
+        }
+        ParsedCmd::GeoRadiusByMember { key, member, radius, unit, withcoord, withdist, count } => {
+            handlers::handle_georadiusbymember(&key, &member, radius, &unit, withcoord, withdist, count)
+        }
         // Transaction
         ParsedCmd::Multi => handlers::handle_multi(state),
         ParsedCmd::Exec => handlers::handle_exec(state).await,

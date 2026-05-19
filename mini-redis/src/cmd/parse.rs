@@ -1247,6 +1247,112 @@ impl ParsedCmd {
                     ParsedCmd::ZDiff { numkeys, keys, withscores }
                 }
             }
+            // Geo
+            "GEOADD" => {
+                if args.len() < 4 || (args.len() - 1) % 3 != 0 {
+                    return Err(wrong_arg_count("geoadd"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let mut members = Vec::new();
+                while let Some(lon_str) = iter.next() {
+                    let lon = lon_str.parse::<f64>().map_err(|_| CmdError::InvalidInteger)?;
+                    let lat = iter.next().ok_or_else(|| wrong_arg_count("geoadd"))?
+                        .parse::<f64>().map_err(|_| CmdError::InvalidInteger)?;
+                    let member = iter.next().ok_or_else(|| wrong_arg_count("geoadd"))?;
+                    members.push((lon, lat, member));
+                }
+                ParsedCmd::GeoAdd { key, members }
+            }
+            "GEODIST" => {
+                if args.len() < 3 || args.len() > 4 {
+                    return Err(wrong_arg_count("geodist"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let member1 = iter.next().unwrap();
+                let member2 = iter.next().unwrap();
+                let unit = iter.next().unwrap_or_else(|| "m".to_string());
+                if !matches!(unit.as_str(), "m" | "km" | "mi" | "ft") {
+                    return Err(CmdError::SyntaxError);
+                }
+                ParsedCmd::GeoDist { key, member1, member2, unit }
+            }
+            "GEOHASH" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count("geohash"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let members: Vec<String> = iter.collect();
+                ParsedCmd::GeoHash { key, members }
+            }
+            "GEOPOS" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count("geopos"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let members: Vec<String> = iter.collect();
+                ParsedCmd::GeoPos { key, members }
+            }
+            "GEORADIUS" => {
+                if args.len() < 5 {
+                    return Err(wrong_arg_count("georadius"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let lon = iter.next().unwrap().parse::<f64>().map_err(|_| CmdError::InvalidInteger)?;
+                let lat = iter.next().unwrap().parse::<f64>().map_err(|_| CmdError::InvalidInteger)?;
+                let radius = iter.next().unwrap().parse::<f64>().map_err(|_| CmdError::InvalidInteger)?;
+                let unit = iter.next().unwrap();
+                if !matches!(unit.as_str(), "m" | "km" | "mi" | "ft") {
+                    return Err(CmdError::SyntaxError);
+                }
+                let mut withcoord = false;
+                let mut withdist = false;
+                let mut count = None;
+                while let Some(flag) = iter.next() {
+                    match flag.to_uppercase().as_str() {
+                        "WITHCOORD" => withcoord = true,
+                        "WITHDIST" => withdist = true,
+                        "COUNT" => {
+                            count = Some(iter.next().ok_or_else(|| wrong_arg_count("georadius"))?
+                                .parse::<u64>().map_err(|_| CmdError::InvalidInteger)?);
+                        }
+                        _ => return Err(CmdError::SyntaxError),
+                    }
+                }
+                ParsedCmd::GeoRadius { key, longitude: lon, latitude: lat, radius, unit, withcoord, withdist, count }
+            }
+            "GEORADIUSBYMEMBER" => {
+                if args.len() < 4 {
+                    return Err(wrong_arg_count("georadiusbymember"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let member = iter.next().unwrap();
+                let radius = iter.next().unwrap().parse::<f64>().map_err(|_| CmdError::InvalidInteger)?;
+                let unit = iter.next().unwrap();
+                if !matches!(unit.as_str(), "m" | "km" | "mi" | "ft") {
+                    return Err(CmdError::SyntaxError);
+                }
+                let mut withcoord = false;
+                let mut withdist = false;
+                let mut count = None;
+                while let Some(flag) = iter.next() {
+                    match flag.to_uppercase().as_str() {
+                        "WITHCOORD" => withcoord = true,
+                        "WITHDIST" => withdist = true,
+                        "COUNT" => {
+                            count = Some(iter.next().ok_or_else(|| wrong_arg_count("georadiusbymember"))?
+                                .parse::<u64>().map_err(|_| CmdError::InvalidInteger)?);
+                        }
+                        _ => return Err(CmdError::SyntaxError),
+                    }
+                }
+                ParsedCmd::GeoRadiusByMember { key, member, radius, unit, withcoord, withdist, count }
+            }
             _ => return Err(CmdError::UnknownCommand),
         })
     }
