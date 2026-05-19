@@ -2,45 +2,21 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
 use tokio::time::Instant;
 
-use crate::db::{Entry, Value};
-
-/// Persistence-specific data format (handles non-serializable `Instant` in Entry.expiry).
-#[derive(Serialize, Deserialize)]
-pub struct PersistEntry {
-    value: Value,
-}
-
-impl From<&Entry> for PersistEntry {
-    fn from(entry: &Entry) -> Self {
-        PersistEntry {
-            value: entry.value.clone(),
-        }
-    }
-}
-
-impl From<PersistEntry> for Entry {
-    fn from(pe: PersistEntry) -> Self {
-        Entry {
-            value: pe.value,
-            expiry: None,
-        }
-    }
-}
+use crate::db::Entry;
 
 /// Save the entire database to a file at `path`.
 /// Expired keys are skipped during serialization.
 pub fn save(path: &str) -> Result<(), String> {
     let data = crate::db::with_db(|db| {
-        let mut map: HashMap<String, PersistEntry> = HashMap::new();
+        let mut map: HashMap<String, Entry> = HashMap::new();
         let now = Instant::now();
         for (key, entry) in db.iter() {
             if entry.expiry.is_some_and(|exp| now >= exp) {
                 continue;
             }
-            map.insert(key.clone(), PersistEntry::from(entry));
+            map.insert(key.clone(), entry.clone());
         }
         map
     });
@@ -51,18 +27,16 @@ pub fn save(path: &str) -> Result<(), String> {
 }
 
 /// Load the database from a file at `path`.
-/// Returns the number of keys loaded.
+/// Replaces all current in-memory data. Returns the number of keys loaded.
 pub fn load(path: &str) -> Result<usize, String> {
     let bytes = fs::read(path).map_err(|e| format!("read error: {}", e))?;
-    let data: HashMap<String, PersistEntry> =
+    let data: HashMap<String, Entry> =
         bincode::deserialize(&bytes).map_err(|e| format!("deserialize error: {}", e))?;
 
     let count = data.len();
     crate::db::with_db(|db| {
         db.clear();
-        for (key, pe) in data {
-            db.insert(key, Entry::from(pe));
-        }
+        db.extend(data);
     });
     Ok(count)
 }
