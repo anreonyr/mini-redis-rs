@@ -1,9 +1,14 @@
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use tokio::time::Instant;
+
+tokio::task_local! {
+    /// Per-task database index — no more global mutable atomic across connections.
+    pub static DB_INDEX: std::cell::Cell<usize>;
+}
 
 pub const NUM_DBS: usize = 16;
 
@@ -15,11 +20,12 @@ static DBS: LazyLock<Mutex<Vec<HashMap<String, Entry>>>> = LazyLock::new(|| {
     Mutex::new(vec)
 });
 static VERSION_COUNTER: AtomicU64 = AtomicU64::new(1);
-static CURRENT_DB: AtomicUsize = AtomicUsize::new(0);
 
-/// Set the current database index (used by dispatch_command before calling handlers).
+/// Set the current database index for this connection's task.
+/// No longer a global atomic — uses `tokio::task_local!` so each
+/// spawned connection task has its own independent value.
 pub fn set_current_db(index: usize) {
-    CURRENT_DB.store(index.min(NUM_DBS - 1), Ordering::Relaxed);
+    DB_INDEX.with(|cell| cell.set(index.min(NUM_DBS - 1)));
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -101,7 +107,7 @@ pub fn with_db<F, R>(f: F) -> R
 where
     F: FnOnce(&mut HashMap<String, Entry>) -> R,
 {
-    let idx = CURRENT_DB.load(Ordering::Relaxed);
+    let idx = DB_INDEX.with(|cell| cell.get());
     let mut dbs = DBS.lock().unwrap();
     f(&mut dbs[idx])
 }
@@ -130,7 +136,7 @@ pub fn bump_version() -> u64 {
 /// Get the current version of a key, or None if the key doesn't exist.
 /// Locks the DB internally. Do NOT call from inside `with_db()` (deadlock risk).
 pub fn key_version(key: &str) -> Option<u64> {
-    let idx = CURRENT_DB.load(Ordering::Relaxed);
+    let idx = DB_INDEX.with(|cell| cell.get());
     let dbs = DBS.lock().unwrap();
     dbs[idx].get(key).map(|e| e.version)
 }

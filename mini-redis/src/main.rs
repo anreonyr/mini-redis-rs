@@ -1,4 +1,5 @@
 use mini_redis::{cmd, config, db, inline, persist, registry, resp};
+use mini_redis::db::DB_INDEX;
 use std::time::Duration;
 use tokio::time::Instant;
 
@@ -53,7 +54,7 @@ async fn main() -> anyhow::Result<()> {
         _ = signal::ctrl_c() => {
             println!("\nCtrl+C received, saving data...");
             let path = config::with_config(|cfg| cfg.db_path());
-            if let Err(e) = persist::save(&path) {
+            if let Err(e) = persist::save(&path).await {
                 eprintln!("Failed to save data: {}", e);
             } else {
                 println!("Data saved to {}", path);
@@ -93,9 +94,13 @@ async fn accept_loop(
         println!("accepted new connection");
 
         connections.spawn(async move {
-            if let Err(e) = handle_connection(stream).await {
-                eprintln!("connection error: {:#}", e);
-            }
+            // Each connection runs in its own task-local DB scope (default DB 0).
+            // SELECT command calls db::set_current_db() to change within this scope.
+            DB_INDEX.scope(std::cell::Cell::new(0), async move {
+                if let Err(e) = handle_connection(stream).await {
+                    eprintln!("connection error: {:#}", e);
+                }
+            }).await;
         });
     }
 }

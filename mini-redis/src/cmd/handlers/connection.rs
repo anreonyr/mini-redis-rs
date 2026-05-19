@@ -160,9 +160,9 @@ pub fn handle_config_set(parameter: &str, value: &str) -> RespType {
     }
 }
 
-pub fn handle_save() -> RespType {
+pub async fn handle_save() -> RespType {
     let path = config::with_config(|cfg| cfg.db_path());
-    match crate::persist::save(&path) {
+    match crate::persist::save(&path).await {
         Ok(()) => RespType::SimpleString("OK".to_string()),
         Err(e) => RespType::Error(format!("ERR {}", e)),
     }
@@ -170,40 +170,19 @@ pub fn handle_save() -> RespType {
 
 pub fn handle_bgsave() -> RespType {
     let path = config::with_config(|cfg| cfg.db_path());
-    // Clone data for background saving
-    let data = db::with_db(|db| {
-        let now = tokio::time::Instant::now();
-        let mut map: HashMap<String, db::Entry> = HashMap::new();
-        for (key, entry) in db.iter() {
-            if entry.expiry.is_some_and(|exp| now >= exp) {
-                continue;
-            }
-            map.insert(key.clone(), entry.clone());
-        }
-        map
-    });
-
+    // Spawn a background task that uses the async save
     tokio::spawn(async move {
-        let bytes = match bincode::serialize(&data) {
-            Ok(b) => b,
-            Err(e) => {
-                eprintln!("BGSAVE serialize error: {}", e);
-                return;
-            }
-        };
-        if let Err(e) = std::fs::write(&path, &bytes) {
-            eprintln!("BGSAVE write error: {}", e);
-        } else {
-            println!("BGSAVE completed to {}", path);
+        match crate::persist::save(&path).await {
+            Ok(()) => println!("BGSAVE completed to {}", path),
+            Err(e) => eprintln!("BGSAVE error: {}", e),
         }
     });
-
     RespType::SimpleString("OK".to_string())
 }
 
-pub fn handle_shutdown() -> RespType {
+pub async fn handle_shutdown() -> RespType {
     let path = config::with_config(|cfg| cfg.db_path());
-    if let Err(e) = crate::persist::save(&path) {
+    if let Err(e) = crate::persist::save(&path).await {
         return RespType::Error(format!("ERR {}", e));
     }
     std::process::exit(0);

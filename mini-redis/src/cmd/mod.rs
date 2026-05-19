@@ -2,6 +2,7 @@ mod types;
 mod parse;
 mod dispatch;
 mod handlers;
+mod parsers;
 pub mod auth;
 
 pub use types::{CmdError, ParsedCmd};

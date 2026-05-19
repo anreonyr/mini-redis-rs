@@ -262,9 +262,9 @@ async fn dispatch_match<'a>(
         ParsedCmd::Rename { key, newkey } => handlers::handle_rename(&key, &newkey),
         ParsedCmd::Renamenx { key, newkey } => handlers::handle_renamenx(&key, &newkey),
         ParsedCmd::Randomkey => handlers::handle_randomkey(),
-        ParsedCmd::Save => handlers::handle_save(),
+        ParsedCmd::Save => handlers::handle_save().await,
         ParsedCmd::Bgsave => handlers::handle_bgsave(),
-        ParsedCmd::Shutdown => handlers::handle_shutdown(),
+        ParsedCmd::Shutdown => handlers::handle_shutdown().await,
         // Geo
         ParsedCmd::GeoAdd { key, members } => handlers::handle_geoadd(&key, &members),
         ParsedCmd::GeoDist { key, member1, member2, unit } => handlers::handle_geodist(&key, &member1, &member2, &unit),
