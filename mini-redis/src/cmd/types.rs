@@ -438,6 +438,18 @@ pub enum ParsedCmd {
     Select {
         index: usize,
     },
+    // HyperLogLog
+    PfAdd {
+        key: String,
+        elements: Vec<String>,
+    },
+    PfCount {
+        keys: Vec<String>,
+    },
+    PfMerge {
+        dest: String,
+        sources: Vec<String>,
+    },
 }
 
 impl ParsedCmd {
@@ -554,6 +566,9 @@ impl ParsedCmd {
             ParsedCmd::Hello => "HELLO",
             ParsedCmd::Quit => "QUIT",
             ParsedCmd::Select { .. } => "SELECT",
+            ParsedCmd::PfAdd { .. } => "PFADD",
+            ParsedCmd::PfCount { .. } => "PFCOUNT",
+            ParsedCmd::PfMerge { .. } => "PFMERGE",
         }
     }
 }

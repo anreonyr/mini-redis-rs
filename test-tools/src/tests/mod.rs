@@ -16,3 +16,4 @@ pub mod hash;
 pub mod set;
 pub mod zset;
 pub mod auth;
+pub mod hyperloglog;

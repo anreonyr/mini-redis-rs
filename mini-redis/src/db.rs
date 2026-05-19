@@ -76,6 +76,7 @@ pub enum Value {
     Hash(HashMap<Bytes, Bytes>),
     Set(HashSet<Bytes>),
     ZSet(BTreeSet<(i64, Bytes)>),
+    HyperLogLog(Vec<u8>),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

@@ -816,6 +816,28 @@ pub fn init() {
         since_stage: 0,
         summary: "Forgets all watched keys",
     });
+    // HyperLogLog
+    reg.register(CommandInfo {
+        name: "PFADD",
+        arity: -2,
+        category: "HyperLogLog",
+        since_stage: 0,
+        summary: "Adds elements to a HyperLogLog data structure",
+    });
+    reg.register(CommandInfo {
+        name: "PFCOUNT",
+        arity: -2,
+        category: "HyperLogLog",
+        since_stage: 0,
+        summary: "Returns the estimated cardinality of a HyperLogLog",
+    });
+    reg.register(CommandInfo {
+        name: "PFMERGE",
+        arity: -3,
+        category: "HyperLogLog",
+        since_stage: 0,
+        summary: "Merges one or more HyperLogLog values into one",
+    });
 }
 
 pub fn with_registry<F, R>(f: F) -> R

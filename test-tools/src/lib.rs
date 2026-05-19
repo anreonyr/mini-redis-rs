@@ -758,6 +758,21 @@ tree_tests! {
             "PUBLISH no subscribers" => tests::pubsub::test_publish_no_subscribers,
         ],
     ],
+    ("HyperLogLog", "HyperLogLog") [
+        ("PFADD", "New") [
+            "PFADD basic"              => tests::hyperloglog::test_pfadd_basic,
+            "PFADD duplicate"          => tests::hyperloglog::test_pfadd_duplicate,
+            "PFADD wrongtype"          => tests::hyperloglog::test_pfadd_wrongtype,
+        ],
+        ("PFCOUNT", "New") [
+            "PFCOUNT basic"            => tests::hyperloglog::test_pfcount_basic,
+            "PFCOUNT nonexistent"      => tests::hyperloglog::test_pfcount_nonexistent,
+            "PFCOUNT multiple keys"    => tests::hyperloglog::test_pfcount_multiple_keys,
+        ],
+        ("PFMERGE", "New") [
+            "PFMERGE basic"            => tests::hyperloglog::test_pfmerge_basic,
+        ],
+    ],
 }
 
 pub struct BenchmarkDef {

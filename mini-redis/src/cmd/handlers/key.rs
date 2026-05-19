@@ -47,6 +47,7 @@ pub fn handle_type(key: &str) -> RespType {
                         Value::Hash(_) => "hash",
                         Value::Set(_) => "set",
                         Value::ZSet(_) => "zset",
+                        Value::HyperLogLog(_) => "hyperloglog",
                     }
                 }
             }

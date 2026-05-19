@@ -252,5 +252,9 @@ async fn dispatch_match<'a>(
         ParsedCmd::ClientSetName { name } => handlers::handle_client_setname(state, &name),
         ParsedCmd::ClientGetName => handlers::handle_client_getname(state),
         ParsedCmd::Hello => handlers::handle_hello(),
+        // HyperLogLog
+        ParsedCmd::PfAdd { key, elements } => handlers::handle_pfadd(&key, &elements),
+        ParsedCmd::PfCount { keys } => handlers::handle_pfcount(&keys),
+        ParsedCmd::PfMerge { dest, sources } => handlers::handle_pfmerge(&dest, &sources),
     }
 }

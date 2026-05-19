@@ -1052,6 +1052,31 @@ impl ParsedCmd {
                 }
             }
             "HELLO" => ParsedCmd::Hello,
+            // HyperLogLog
+            "PFADD" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count("pfadd"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let elements: Vec<String> = iter.collect();
+                ParsedCmd::PfAdd { key, elements }
+            }
+            "PFCOUNT" => {
+                if args.is_empty() {
+                    return Err(wrong_arg_count("pfcount"));
+                }
+                ParsedCmd::PfCount { keys: args }
+            }
+            "PFMERGE" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count("pfmerge"));
+                }
+                let mut iter = args.into_iter();
+                let dest = iter.next().unwrap();
+                let sources: Vec<String> = iter.collect();
+                ParsedCmd::PfMerge { dest, sources }
+            }
             _ => return Err(CmdError::UnknownCommand),
         })
     }
