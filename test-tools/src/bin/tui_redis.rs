@@ -22,14 +22,21 @@ struct Category {
 }
 
 const CATEGORIES: &[Category] = &[
-    Category { name: "Base",       stages: "Base",    filters: &["Base"] },
-    Category { name: "Key",        stages: "Key",     filters: &["Key"] },
-    Category { name: "List",       stages: "List",    filters: &["List"] },
-    Category { name: "Stream",     stages: "Stream",  filters: &["Stream"] },
-    Category { name: "Hash",       stages: "Hash",    filters: &["Hash"] },
-    Category { name: "Set",        stages: "Set",     filters: &["Set"] },
-    Category { name: "ZSet",       stages: "ZSet",    filters: &["ZSet"] },
-    Category { name: "Auth",       stages: "Auth",    filters: &["Auth"] },
+    Category { name: "Base",       stages: "Base",             filters: &["Base"] },
+    Category { name: "Key",        stages: "Key",              filters: &["Key"] },
+    Category { name: "List",       stages: "List",             filters: &["List"] },
+    Category { name: "Stream",     stages: "Stream",           filters: &["Stream"] },
+    Category { name: "Stream-Adv", stages: "Stream Advanced",  filters: &["Stream Advanced"] },
+    Category { name: "Hash",       stages: "Hash",             filters: &["Hash"] },
+    Category { name: "Set",        stages: "Set",              filters: &["Set"] },
+    Category { name: "ZSet",       stages: "ZSet",             filters: &["ZSet"] },
+    Category { name: "Auth",       stages: "Auth",             filters: &["Auth"] },
+    Category { name: "Persistence",stages: "Persistence",      filters: &["Persistence"] },
+    Category { name: "Transaction",stages: "Transaction",      filters: &["Transaction"] },
+    Category { name: "PubSub",     stages: "PubSub",           filters: &["PubSub"] },
+    Category { name: "Bitmap",     stages: "String Bitmap",    filters: &["String Bitmap"] },
+    Category { name: "Geo",        stages: "Geo",              filters: &["Geo"] },
+    Category { name: "HyperLogLog",stages: "HyperLogLog",      filters: &["HyperLogLog"] },
 ];
 
 // ── Hierarchical select items ────────────────────────────────────────────
