@@ -1,5 +1,6 @@
 use std::sync::{LazyLock, Mutex};
 
+/// Server-level configuration: authentication password, RDB directory and filename.
 pub struct ServerConfig {
     pub requirepass: Option<String>,
     pub dir: String,

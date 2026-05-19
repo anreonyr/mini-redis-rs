@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
+/// Metadata for a registered command (name, arity, category, stage, description).
 pub struct CommandInfo {
     pub name: &'static str,
     pub arity: i32,
@@ -9,6 +10,7 @@ pub struct CommandInfo {
     pub summary: &'static str,
 }
 
+/// Global command registry for introspection (COMMAND, COMMAND INFO).
 pub struct CommandRegistry {
     commands: HashMap<String, CommandInfo>,
 }

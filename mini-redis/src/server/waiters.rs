@@ -5,6 +5,7 @@ use tokio::sync::Notify;
 static WAITERS: LazyLock<Mutex<HashMap<String, Vec<Weak<Notify>>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// RAII guard that unregisters a BLPOP waiter from all watched keys on drop.
 pub struct BlpopGuard {
     keys: Vec<String>,
     notify_ptr: usize,

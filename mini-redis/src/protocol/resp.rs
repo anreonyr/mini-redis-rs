@@ -3,6 +3,7 @@ use std::fmt;
 
 use thiserror::Error;
 
+/// A Redis Serialization Protocol (RESP) frame.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RespType {
     SimpleString(String),
@@ -73,6 +74,8 @@ pub enum DecodeError {
     Invalid(String),
 }
 
+/// Stateless RESP frame decoder. Parses bytes into complete RespType frames,
+/// returning `DecodeError::Incomplete` when more data is needed.
 pub struct Decoder;
 
 impl Decoder {

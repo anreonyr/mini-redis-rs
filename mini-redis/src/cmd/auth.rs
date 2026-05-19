@@ -6,6 +6,7 @@ use crate::server::pubsub::Message;
 use crate::protocol::resp::RespType;
 use tokio::sync::mpsc::UnboundedReceiver;
 
+/// Queued commands within a MULTI/EXEC transaction block.
 #[derive(Clone)]
 pub struct TransactionState {
     pub queue: Vec<ParsedCmd>,
@@ -24,7 +25,7 @@ pub struct SubscriptionState {
     pub rx: UnboundedReceiver<Message>,
 }
 
-/// Per-connection authentication and transaction state.
+/// Per-connection state: database index, authentication, transaction, subscription, client name.
 pub struct ConnectionState {
     authenticated: bool,
     pub transaction: Option<TransactionState>,

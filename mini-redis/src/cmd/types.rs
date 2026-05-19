@@ -9,7 +9,8 @@ pub enum XGroupSub {
     SetId { group: String, id: String },
 }
 
-/// All arguments have been parsed and validated at this point.
+/// A fully validated Redis command with arguments extracted.
+/// All arguments have been parsed into their native types at this point.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ParsedCmd {
     Ping,

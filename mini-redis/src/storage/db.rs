@@ -26,12 +26,14 @@ pub fn set_current_db(index: usize) {
     DB_INDEX.with(|cell| cell.set(index.min(NUM_DBS - 1)));
 }
 
+/// A single entry in a Redis stream, identified by a unique ID with field-value pairs.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StreamEntry {
     pub id: String,
     pub fields: Vec<(Bytes, Bytes)>,
 }
 
+/// An ordered collection of stream entries with consumer group tracking.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StreamData {
     pub entries: VecDeque<StreamEntry>,
@@ -51,6 +53,7 @@ impl StreamData {
     }
 }
 
+/// A consumer group with its own delivery cursor and pending message tracking.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ConsumerGroup {
     pub name: String,
@@ -59,6 +62,7 @@ pub struct ConsumerGroup {
     pub consumers: HashMap<String, ConsumerInfo>,
 }
 
+/// A pending (unacknowledged) message delivered to a consumer.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PendingEntry {
     pub id: String,
@@ -66,12 +70,14 @@ pub struct PendingEntry {
     pub delivery_count: u64,
 }
 
+/// Metadata for a consumer within a consumer group.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ConsumerInfo {
     pub name: String,
     pub pending_count: u64,
 }
 
+/// All value types storable in a Redis key.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     String(Bytes),
@@ -82,6 +88,7 @@ pub enum Value {
     ZSet(BTreeSet<(i64, Bytes)>),
 }
 
+/// A key-value pair stored in the database with optional expiry and optimistic-lock version.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
     pub value: Value,
