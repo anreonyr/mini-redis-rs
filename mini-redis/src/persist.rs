@@ -22,7 +22,11 @@ pub fn save(path: &str) -> Result<(), String> {
     });
 
     let bytes = bincode::serialize(&data).map_err(|e| format!("serialize error: {}", e))?;
-    fs::write(path, &bytes).map_err(|e| format!("write error: {}", e))?;
+
+    // Atomic write: write to temp file, then rename
+    let tmp = format!("{}.tmp", path);
+    fs::write(&tmp, &bytes).map_err(|e| format!("write error: {}", e))?;
+    fs::rename(&tmp, path).map_err(|e| format!("rename error: {}", e))?;
     Ok(())
 }
 
