@@ -307,17 +307,23 @@ macro_rules! tree_tests {
             )+
         ];
 
-        pub async fn run_test(def: &TestDef, client: &mut RedisClient) -> Result<(), String> {
-            match (def.subcategory.unwrap_or(""), def.name) {
-                $(
+        pub fn run_test<'a>(def: &'a TestDef, client: &'a mut RedisClient) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), String>> + Send + 'a>> {
+            // Wrap in async move so the giant match's state machine lives on the
+            // heap (Box) instead of the stack, avoiding debug-mode stack overflow.
+            Box::pin(async move {
+                let subcat = def.subcategory.unwrap_or("");
+                let name = def.name;
+                match (subcat, name) {
                     $(
                         $(
-                            ($sub, $name) => $handler(client).await,
-                        )+
-                    )*
-                )+
-                _ => Err(format!("unknown test: {} / {}", def.subcategory.unwrap_or(""), def.name)),
-            }
+                            $(
+                                ($sub, $name) => $handler(client).await,
+                            )+
+                        )*
+                    )+
+                    _ => Err(format!("unknown test: {} / {}", subcat, name)),
+                }
+            })
         }
     };
 }
@@ -352,10 +358,39 @@ tree_tests! {
             "SET empty value"     => tests::string::test_set_empty_value,
             "SET binary data"     => tests::string::test_set_binary_data,
         ],
+        ("STRING_EXT", "String") [
+            "INCR new key"        => tests::string::test_incr_new_key,
+            "INCR existing"       => tests::string::test_incr_existing,
+            "DECR"                => tests::string::test_decr,
+            "INCRBY"              => tests::string::test_incrby,
+            "DECRBY"              => tests::string::test_decrby,
+            "INCR wrong type"     => tests::string::test_incr_wrong_type,
+            "INCR invalid value"  => tests::string::test_incr_invalid_value,
+            "APPEND"              => tests::string::test_append,
+            "APPEND new key"      => tests::string::test_append_new_key,
+            "STRLEN"              => tests::string::test_strlen,
+            "STRLEN nonexistent"  => tests::string::test_strlen_nonexistent,
+            "MGET"                => tests::string::test_mget,
+            "MSET"                => tests::string::test_mset,
+        ],
+        ("STRING_MORE", "String") [
+            "GETSET"              => tests::string::test_getset,
+            "GETRANGE"            => tests::string::test_getrange,
+            "SETRANGE"            => tests::string::test_setrange,
+            "MSETNX"              => tests::string::test_msetnx,
+        ],
         ("EXPIRE", "Stage 7") [
             "EX expiry"           => tests::expiry::test_ex_actual_expiry,
             "PX expiry"           => tests::expiry::test_px_actual_expiry,
             "Background expiry"   => tests::expiry::test_expiry_background_cleanup,
+            "EXPIRE basic"        => tests::expiry::test_expire_basic,
+            "EXPIRE nonexistent"  => tests::expiry::test_expire_nonexistent,
+            "TTL with expiry"     => tests::expiry::test_ttl_with_expiry,
+            "TTL no expiry"       => tests::expiry::test_ttl_no_expiry,
+            "TTL nonexistent"     => tests::expiry::test_ttl_nonexistent,
+            "PERSIST basic"       => tests::expiry::test_persist_basic,
+            "PERSIST nonexistent" => tests::expiry::test_persist_nonexistent,
+            "PERSIST no expiry"   => tests::expiry::test_persist_no_expiry,
         ],
         ("WRONGTYPE", "Edge Cases") [
             "GET on list"         => tests::wrongtype::test_wrongtype_get_on_list,
@@ -374,6 +409,42 @@ tree_tests! {
         ],
         ("SERVER", "Server") [
             "FLUSHDB"             => tests::server::test_flushdb,
+            "INFO"                => tests::server::test_info,
+            "CONFIG GET dir"      => tests::server::test_config_get_dir,
+            "CONFIG GET unknown"  => tests::server::test_config_get_unknown,
+        ],
+    ],
+    ("Key", "Key") [
+        ("DEL", "New") [
+            "DEL single"           => tests::key::test_del_single,
+            "DEL multiple"         => tests::key::test_del_multiple,
+            "DEL nonexistent"      => tests::key::test_del_nonexistent,
+        ],
+        ("EXISTS", "New") [
+            "EXISTS single"        => tests::key::test_exists_single,
+            "EXISTS multiple"      => tests::key::test_exists_multiple,
+            "EXISTS nonexistent"   => tests::key::test_exists_nonexistent,
+        ],
+        ("TYPE", "New") [
+            "TYPE string"          => tests::key::test_type_string,
+            "TYPE list"            => tests::key::test_type_list,
+            "TYPE none"            => tests::key::test_type_none,
+        ],
+        ("KEYS", "New") [
+            "KEYS pattern"         => tests::key::test_keys_pattern,
+            "KEYS nomatch"         => tests::key::test_keys_nomatch,
+        ],
+        ("DBSIZE", "New") [
+            "DBSIZE basic"         => tests::key::test_dbsize,
+        ],
+        ("RENAME", "New") [
+            "RENAME basic"         => tests::key::test_rename,
+        ],
+        ("RENAMENX", "New") [
+            "RENAMENX"             => tests::key::test_renamenx,
+        ],
+        ("RANDOMKEY", "New") [
+            "RANDOMKEY"            => tests::key::test_randomkey,
         ],
     ],
     ("List", "List") [
@@ -402,6 +473,33 @@ tree_tests! {
             "LPOP count=0"        => tests::list::test_lpop_count_zero,
             "LPOP empty key"      => tests::list::test_lpop_empty_key,
             "LPOP count > len"    => tests::list::test_lpop_count_larger_than_list,
+        ],
+        ("RPOP", "New") [
+            "RPOP single"         => tests::list::test_rpop_single,
+            "RPOP with count"     => tests::list::test_rpop_with_count,
+            "RPOP empty key"      => tests::list::test_rpop_empty_key,
+        ],
+        ("LINDEX", "New") [
+            "LINDEX basic"        => tests::list::test_lindex_basic,
+            "LINDEX out of bounds" => tests::list::test_lindex_out_of_bounds,
+            "LINDEX nonexistent"  => tests::list::test_lindex_nonexistent,
+        ],
+        ("LREM", "New") [
+            "LREM positive count" => tests::list::test_lrem_positive_count,
+            "LREM negative count" => tests::list::test_lrem_negative_count,
+            "LREM all"            => tests::list::test_lrem_all,
+            "LREM nonexistent"    => tests::list::test_lrem_nonexistent,
+        ],
+        ("LTRIM", "New") [
+            "LTRIM basic"         => tests::list::test_ltrim_basic,
+            "LTRIM negative"      => tests::list::test_ltrim_negative_indices,
+            "LTRIM nonexistent"   => tests::list::test_ltrim_nonexistent,
+        ],
+        ("RPOPLPUSH", "New") [
+            "RPOPLPUSH"           => tests::list::test_rpoplpush,
+        ],
+        ("LSET", "New") [
+            "LSET"                => tests::list::test_lset,
         ],
         ("BLPOP", "Stages 17-18") [
             "BLPOP immediate"       => tests::blpop::test_blpop_immediate,
@@ -478,6 +576,16 @@ tree_tests! {
         ("HVALS", "New") [
             "HVALS basic"           => tests::hash::test_hvals,
         ],
+        ("HINCRBY", "New") [
+            "HINCRBY existing"      => tests::hash::test_hincrby,
+            "HINCRBY new"           => tests::hash::test_hincrby_new,
+        ],
+        ("HINCRBYFLOAT", "New") [
+            "HINCRBYFLOAT"          => tests::hash::test_hincrbyfloat,
+        ],
+        ("HSETNX", "New") [
+            "HSETNX new"            => tests::hash::test_hsetnx,
+        ],
         ("WRONGTYPE", "New") [
             "HGET on string"        => tests::wrongtype::test_wrongtype_hget_on_string,
             "HSET on string"        => tests::wrongtype::test_wrongtype_hset_on_string,
@@ -507,6 +615,26 @@ tree_tests! {
             "SCARD basic"           => tests::set::test_scard,
             "SCARD empty"           => tests::set::test_scard_empty,
         ],
+        ("SPOP", "New") [
+            "SPOP single"           => tests::set::test_spop_single,
+            "SPOP count"            => tests::set::test_spop_count,
+            "SPOP empty"            => tests::set::test_spop_empty,
+        ],
+        ("SRANDMEMBER", "New") [
+            "SRANDMEMBER basic"     => tests::set::test_srandmember_basic,
+        ],
+        ("SUNION", "New") [
+            "SUNION"                => tests::set::test_sunion,
+        ],
+        ("SINTER", "New") [
+            "SINTER"                => tests::set::test_sinter,
+        ],
+        ("SDIFF", "New") [
+            "SDIFF"                 => tests::set::test_sdiff,
+        ],
+        ("SMOVE", "New") [
+            "SMOVE"                 => tests::set::test_smove,
+        ],
         ("WRONGTYPE", "New") [
             "SADD on string"        => tests::wrongtype::test_wrongtype_sadd_on_string,
         ],
@@ -530,6 +658,41 @@ tree_tests! {
         ("ZSCORE", "New") [
             "ZSCORE existing"           => tests::zset::test_zscore_existing,
             "ZSCORE nonexistent"        => tests::zset::test_zscore_nonexistent,
+        ],
+        ("ZREM", "New") [
+            "ZREM basic"                => tests::zset::test_zrem_basic,
+            "ZREM nonexistent"          => tests::zset::test_zrem_nonexistent,
+        ],
+        ("ZCARD", "New") [
+            "ZCARD basic"               => tests::zset::test_zcard,
+            "ZCARD empty"               => tests::zset::test_zcard_empty,
+        ],
+        ("ZCOUNT", "New") [
+            "ZCOUNT range"              => tests::zset::test_zcount,
+            "ZCOUNT inf"                => tests::zset::test_zcount_inf,
+        ],
+        ("ZRANGEBYSCORE", "New") [
+            "ZRANGEBYSCORE"             => tests::zset::test_zrangebyscore,
+            "ZRANGEBYSCORE WITHSCORES"  => tests::zset::test_zrangebyscore_withscores,
+        ],
+        ("ZINCRBY", "New") [
+            "ZINCRBY existing"          => tests::zset::test_zincrby,
+            "ZINCRBY new"               => tests::zset::test_zincrby_new,
+        ],
+        ("ZREVRANGE", "New") [
+            "ZREVRANGE full"            => tests::zset::test_zrevrange,
+        ],
+        ("ZREVRANK", "New") [
+            "ZREVRANK"                  => tests::zset::test_zrevrank,
+        ],
+        ("ZREMRANGEBYRANK", "New") [
+            "ZREMRANGEBYRANK"           => tests::zset::test_zremrangebyrank,
+        ],
+        ("ZREMRANGEBYSCORE", "New") [
+            "ZREMRANGEBYSCORE"          => tests::zset::test_zremrangebyscore,
+        ],
+        ("ZREVRANGEBYSCORE", "New") [
+            "ZREVRANGEBYSCORE"          => tests::zset::test_zrevrangebyscore,
         ],
         ("WRONGTYPE", "New") [
             "ZADD on string"            => tests::wrongtype::test_wrongtype_zadd_on_string,

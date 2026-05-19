@@ -95,3 +95,68 @@ pub async fn test_scard_empty(client: &mut RedisClient) -> Result<(), String> {
     crate::assert_resp!(r, int(0), "SCARD empty key");
     Ok(())
 }
+
+pub async fn test_spop_single(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SADD", "test_rs:spo", "a"]).await?;
+    let r = client.cmd(&["SPOP", "test_rs:spo"]).await?;
+    crate::assert_resp!(r, bulk_str("a"), "SPOP single");
+    let r = client.cmd(&["SCARD", "test_rs:spo"]).await?;
+    crate::assert_resp!(r, int(0), "SCARD after SPOP");
+    Ok(())
+}
+
+pub async fn test_spop_count(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SADD", "test_rs:spo2", "a", "b", "c"]).await?;
+    let r = client.cmd(&["SPOP", "test_rs:spo2", "2"]).await?;
+    assert!(matches!(&r, mini_redis::resp::RespType::Array(Some(v)) if v.len() == 2), "SPOP count 2");
+    Ok(())
+}
+
+pub async fn test_spop_empty(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["SPOP", "test_rs:nokey"]).await?;
+    crate::assert_resp!(r, null_bulk(), "SPOP empty");
+    Ok(())
+}
+
+pub async fn test_srandmember_basic(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SADD", "test_rs:sran", "a"]).await?;
+    let r = client.cmd(&["SRANDMEMBER", "test_rs:sran"]).await?;
+    crate::assert_resp!(r, bulk_str("a"), "SRANDMEMBER");
+    Ok(())
+}
+
+pub async fn test_sunion(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SADD", "test_rs:su1", "a", "b"]).await?;
+    client.cmd(&["SADD", "test_rs:su2", "b", "c"]).await?;
+    let r = client.cmd(&["SUNION", "test_rs:su1", "test_rs:su2"]).await?;
+    assert!(matches!(&r, mini_redis::resp::RespType::Array(Some(v)) if v.len() == 3), "SUNION");
+    Ok(())
+}
+
+pub async fn test_sinter(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SADD", "test_rs:si1", "a", "b", "c"]).await?;
+    client.cmd(&["SADD", "test_rs:si2", "b", "c", "d"]).await?;
+    let r = client.cmd(&["SINTER", "test_rs:si1", "test_rs:si2"]).await?;
+    assert!(matches!(&r, mini_redis::resp::RespType::Array(Some(v)) if v.len() == 2), "SINTER");
+    Ok(())
+}
+
+pub async fn test_sdiff(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SADD", "test_rs:sd1", "a", "b", "c"]).await?;
+    client.cmd(&["SADD", "test_rs:sd2", "b"]).await?;
+    let r = client.cmd(&["SDIFF", "test_rs:sd1", "test_rs:sd2"]).await?;
+    assert!(matches!(&r, mini_redis::resp::RespType::Array(Some(v)) if v.len() == 2), "SDIFF");
+    Ok(())
+}
+
+pub async fn test_smove(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["SADD", "test_rs:sm1", "a", "b"]).await?;
+    client.cmd(&["SADD", "test_rs:sm2", "c"]).await?;
+    let r = client.cmd(&["SMOVE", "test_rs:sm1", "test_rs:sm2", "a"]).await?;
+    crate::assert_resp!(r, int(1), "SMOVE success");
+    let r = client.cmd(&["SISMEMBER", "test_rs:sm1", "a"]).await?;
+    crate::assert_resp!(r, int(0), "SMOVE removed from source");
+    let r = client.cmd(&["SISMEMBER", "test_rs:sm2", "a"]).await?;
+    crate::assert_resp!(r, int(1), "SMOVE added to dest");
+    Ok(())
+}

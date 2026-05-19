@@ -43,6 +43,63 @@ impl ParsedCmd {
                     .ok_or_else(|| wrong_arg_count("get"))?;
                 ParsedCmd::Get { key }
             }
+            "INCR" => {
+                let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("incr"))?;
+                ParsedCmd::Incr { key }
+            }
+            "DECR" => {
+                let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("decr"))?;
+                ParsedCmd::Decr { key }
+            }
+            "INCRBY" => {
+                if args.len() != 2 {
+                    return Err(wrong_arg_count("incrby"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let delta: i64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                ParsedCmd::Incrby { key, delta }
+            }
+            "DECRBY" => {
+                if args.len() != 2 {
+                    return Err(wrong_arg_count("decrby"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let delta: i64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                ParsedCmd::Decrby { key, delta }
+            }
+            "APPEND" => {
+                if args.len() != 2 {
+                    return Err(wrong_arg_count("append"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let value = iter.next().unwrap();
+                ParsedCmd::Append { key, value }
+            }
+            "STRLEN" => {
+                let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("strlen"))?;
+                ParsedCmd::Strlen { key }
+            }
+            "MGET" => {
+                if args.is_empty() {
+                    return Err(wrong_arg_count("mget"));
+                }
+                ParsedCmd::Mget { keys: args }
+            }
+            "MSET" => {
+                if args.len() < 2 || args.len() % 2 != 0 {
+                    return Err(wrong_arg_count("mset"));
+                }
+                let mut iter = args.into_iter();
+                let mut pairs = Vec::new();
+                while let Some(k) = iter.next() {
+                    let v = iter.next().unwrap();
+                    pairs.push((k, v));
+                }
+                ParsedCmd::Mset { pairs }
+            }
             "RPUSH" => {
                 if args.len() < 2 {
                     return Err(wrong_arg_count("rpush"));
@@ -98,6 +155,63 @@ impl ParsedCmd {
                     .transpose()?;
                 ParsedCmd::Lpop { key, count }
             }
+            "RPOP" => {
+                if args.is_empty() || args.len() > 2 {
+                    return Err(wrong_arg_count("rpop"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let count = iter
+                    .next()
+                    .map(|s| s.parse::<usize>().map_err(|_| CmdError::InvalidInteger))
+                    .transpose()?;
+                ParsedCmd::Rpop { key, count }
+            }
+            "LINDEX" => {
+                if args.len() != 2 {
+                    return Err(wrong_arg_count("lindex"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let index: i64 = iter
+                    .next()
+                    .unwrap()
+                    .parse()
+                    .map_err(|_| CmdError::InvalidInteger)?;
+                ParsedCmd::Lindex { key, index }
+            }
+            "LREM" => {
+                if args.len() != 3 {
+                    return Err(wrong_arg_count("lrem"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let count: i64 = iter
+                    .next()
+                    .unwrap()
+                    .parse()
+                    .map_err(|_| CmdError::InvalidInteger)?;
+                let value = iter.next().unwrap();
+                ParsedCmd::Lrem { key, count, value }
+            }
+            "LTRIM" => {
+                if args.len() != 3 {
+                    return Err(wrong_arg_count("ltrim"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let start: i64 = iter
+                    .next()
+                    .unwrap()
+                    .parse()
+                    .map_err(|_| CmdError::InvalidInteger)?;
+                let stop: i64 = iter
+                    .next()
+                    .unwrap()
+                    .parse()
+                    .map_err(|_| CmdError::InvalidInteger)?;
+                ParsedCmd::Ltrim { key, start, stop }
+            }
             "BLPOP" => {
                 if args.len() < 2 {
                     return Err(wrong_arg_count("blpop"));
@@ -116,6 +230,22 @@ impl ParsedCmd {
                 ParsedCmd::Command { subcommand, name }
             }
             "FLUSHDB" => ParsedCmd::Flushdb,
+            "INFO" => {
+                let section = args.into_iter().next();
+                ParsedCmd::Info { section }
+            }
+            "CONFIG" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count("config"));
+                }
+                let mut iter = args.into_iter();
+                let sub = iter.next().unwrap().to_uppercase();
+                if sub != "GET" {
+                    return Err(CmdError::SyntaxError);
+                }
+                let parameter = iter.next().unwrap();
+                ParsedCmd::ConfigGet { parameter }
+            }
             // Streams
             "XADD" => {
                 if args.len() < 3 || args.len() % 2 != 0 {
@@ -333,6 +463,48 @@ impl ParsedCmd {
                 let key = args.into_iter().next().unwrap();
                 ParsedCmd::Scard { key }
             }
+            "SPOP" => {
+                if args.is_empty() || args.len() > 2 {
+                    return Err(wrong_arg_count("spop"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let count = iter
+                    .next()
+                    .map(|s| s.parse::<usize>().map_err(|_| CmdError::InvalidInteger))
+                    .transpose()?;
+                ParsedCmd::Spop { key, count }
+            }
+            "SRANDMEMBER" => {
+                if args.is_empty() || args.len() > 2 {
+                    return Err(wrong_arg_count("srandmember"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let count = iter
+                    .next()
+                    .map(|s| s.parse::<i64>().map_err(|_| CmdError::InvalidInteger))
+                    .transpose()?;
+                ParsedCmd::Srandmember { key, count }
+            }
+            "SUNION" => {
+                if args.is_empty() {
+                    return Err(wrong_arg_count("sunion"));
+                }
+                ParsedCmd::Sunion { keys: args }
+            }
+            "SINTER" => {
+                if args.is_empty() {
+                    return Err(wrong_arg_count("sinter"));
+                }
+                ParsedCmd::Sinter { keys: args }
+            }
+            "SDIFF" => {
+                if args.is_empty() {
+                    return Err(wrong_arg_count("sdiff"));
+                }
+                ParsedCmd::Sdiff { keys: args }
+            }
             // Sorted Set
             "ZADD" => {
                 if args.len() < 3 || args.len() % 2 == 0 {
@@ -377,6 +549,304 @@ impl ParsedCmd {
                 let member = iter.next().unwrap();
                 ParsedCmd::Zscore { key, member }
             }
+            "ZREM" => {
+                if args.len() < 2 {
+                    return Err(wrong_arg_count("zrem"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let members: Vec<String> = iter.collect();
+                ParsedCmd::Zrem { key, members }
+            }
+            "ZCARD" => {
+                let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("zcard"))?;
+                ParsedCmd::Zcard { key }
+            }
+            "ZCOUNT" => {
+                if args.len() != 3 {
+                    return Err(wrong_arg_count("zcount"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let min = iter.next().unwrap();
+                let max = iter.next().unwrap();
+                ParsedCmd::Zcount { key, min, max }
+            }
+            "ZRANGEBYSCORE" => {
+                if args.len() < 3 {
+                    return Err(wrong_arg_count("zrangebyscore"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let min = iter.next().unwrap();
+                let max = iter.next().unwrap();
+                let mut withscores = false;
+                let mut limit = None;
+                while let Some(flag) = iter.next() {
+                    match flag.to_uppercase().as_str() {
+                        "WITHSCORES" => withscores = true,
+                        "LIMIT" => {
+                            let offset: usize = iter
+                                .next()
+                                .ok_or_else(|| wrong_arg_count("zrangebyscore"))?
+                                .parse()
+                                .map_err(|_| CmdError::InvalidInteger)?;
+                            let count: usize = iter
+                                .next()
+                                .ok_or_else(|| wrong_arg_count("zrangebyscore"))?
+                                .parse()
+                                .map_err(|_| CmdError::InvalidInteger)?;
+                            limit = Some((offset, count));
+                        }
+                        _ => return Err(CmdError::SyntaxError),
+                    }
+                }
+                ParsedCmd::Zrangebyscore { key, min, max, withscores, limit }
+            }
+            "ZINCRBY" => {
+                if args.len() != 3 {
+                    return Err(wrong_arg_count("zincrby"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let incr: i64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                let member = iter.next().unwrap();
+                ParsedCmd::Zincrby { key, incr, member }
+            }
+            "ZREVRANGE" => {
+                if args.len() < 3 || args.len() > 4 {
+                    return Err(wrong_arg_count("zrevrange"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let start: i64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                let stop: i64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                let withscores = iter.next().map(|s| s.to_uppercase() == "WITHSCORES").unwrap_or(false);
+                ParsedCmd::Zrevrange { key, start, stop, withscores }
+            }
+            "ZREVRANK" => {
+                if args.len() != 2 {
+                    return Err(wrong_arg_count("zrevrank"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let member = iter.next().unwrap();
+                ParsedCmd::Zrevrank { key, member }
+            }
+            // Key Management
+            "DEL" => {
+                if args.is_empty() {
+                    return Err(wrong_arg_count("del"));
+                }
+                ParsedCmd::Del { keys: args }
+            }
+            "EXISTS" => {
+                if args.is_empty() {
+                    return Err(wrong_arg_count("exists"));
+                }
+                ParsedCmd::Exists { keys: args }
+            }
+            "TYPE" => {
+                let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("type"))?;
+                ParsedCmd::Type { key }
+            }
+            "KEYS" => {
+                let pattern = args.into_iter().next().ok_or_else(|| wrong_arg_count("keys"))?;
+                ParsedCmd::Keys { pattern }
+            }
+            "DBSIZE" => ParsedCmd::Dbsize,
+            // Expiry Management
+            "EXPIRE" => {
+                if args.len() != 2 {
+                    return Err(wrong_arg_count("expire"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let seconds: u64 = iter
+                    .next()
+                    .unwrap()
+                    .parse()
+                    .map_err(|_| CmdError::InvalidInteger)?;
+                ParsedCmd::Expire { key, seconds }
+            }
+            "TTL" => {
+                let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("ttl"))?;
+                ParsedCmd::Ttl { key }
+            }
+            "PERSIST" => {
+                let key = args.into_iter().next().ok_or_else(|| wrong_arg_count("persist"))?;
+                ParsedCmd::Persist { key }
+            }
+            // More String
+            "GETSET" => {
+                if args.len() != 2 {
+                    return Err(wrong_arg_count("getset"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let value = iter.next().unwrap();
+                ParsedCmd::Getset { key, value }
+            }
+            "GETRANGE" => {
+                if args.len() != 3 {
+                    return Err(wrong_arg_count("getrange"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let start: i64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                let end: i64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                ParsedCmd::Getrange { key, start, end }
+            }
+            "SETRANGE" => {
+                if args.len() != 3 {
+                    return Err(wrong_arg_count("setrange"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let offset: u64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                let value = iter.next().unwrap();
+                ParsedCmd::Setrange { key, offset, value }
+            }
+            "MSETNX" => {
+                if args.len() < 2 || args.len() % 2 != 0 {
+                    return Err(wrong_arg_count("msetnx"));
+                }
+                let mut iter = args.into_iter();
+                let mut pairs = Vec::new();
+                while let Some(k) = iter.next() {
+                    let v = iter.next().unwrap();
+                    pairs.push((k, v));
+                }
+                ParsedCmd::Msetnx { pairs }
+            }
+            // More List
+            "RPOPLPUSH" => {
+                if args.len() != 2 {
+                    return Err(wrong_arg_count("rpoplpush"));
+                }
+                let mut iter = args.into_iter();
+                let source = iter.next().unwrap();
+                let destination = iter.next().unwrap();
+                ParsedCmd::Rpoplpush { source, destination }
+            }
+            "LSET" => {
+                if args.len() != 3 {
+                    return Err(wrong_arg_count("lset"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let index: i64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                let value = iter.next().unwrap();
+                ParsedCmd::Lset { key, index, value }
+            }
+            // More Hash
+            "HINCRBY" => {
+                if args.len() != 3 {
+                    return Err(wrong_arg_count("hincrby"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let field = iter.next().unwrap();
+                let incr: i64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                ParsedCmd::Hincrby { key, field, incr }
+            }
+            "HINCRBYFLOAT" => {
+                if args.len() != 3 {
+                    return Err(wrong_arg_count("hincrbyfloat"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let field = iter.next().unwrap();
+                let incr: f64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                ParsedCmd::Hincrbyfloat { key, field, incr }
+            }
+            "HSETNX" => {
+                if args.len() != 3 {
+                    return Err(wrong_arg_count("hsetnx"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let field = iter.next().unwrap();
+                let value = iter.next().unwrap();
+                ParsedCmd::Hsetnx { key, field, value }
+            }
+            // More Set
+            "SMOVE" => {
+                if args.len() != 3 {
+                    return Err(wrong_arg_count("smove"));
+                }
+                let mut iter = args.into_iter();
+                let source = iter.next().unwrap();
+                let destination = iter.next().unwrap();
+                let member = iter.next().unwrap();
+                ParsedCmd::Smove { source, destination, member }
+            }
+            // More ZSet
+            "ZREMRANGEBYRANK" => {
+                if args.len() != 3 {
+                    return Err(wrong_arg_count("zremrangebyrank"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let start: i64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                let stop: i64 = iter.next().unwrap().parse().map_err(|_| CmdError::InvalidInteger)?;
+                ParsedCmd::Zremrangebyrank { key, start, stop }
+            }
+            "ZREMRANGEBYSCORE" => {
+                if args.len() != 3 {
+                    return Err(wrong_arg_count("zremrangebyscore"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let min = iter.next().unwrap();
+                let max = iter.next().unwrap();
+                ParsedCmd::Zremrangebyscore { key, min, max }
+            }
+            "ZREVRANGEBYSCORE" => {
+                if args.len() < 3 {
+                    return Err(wrong_arg_count("zrevrangebyscore"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let max = iter.next().unwrap();
+                let min = iter.next().unwrap();
+                let mut withscores = false;
+                let mut limit = None;
+                while let Some(flag) = iter.next() {
+                    match flag.to_uppercase().as_str() {
+                        "WITHSCORES" => withscores = true,
+                        "LIMIT" => {
+                            let offset: usize = iter.next().ok_or_else(|| wrong_arg_count("zrevrangebyscore"))?
+                                .parse().map_err(|_| CmdError::InvalidInteger)?;
+                            let count: usize = iter.next().ok_or_else(|| wrong_arg_count("zrevrangebyscore"))?
+                                .parse().map_err(|_| CmdError::InvalidInteger)?;
+                            limit = Some((offset, count));
+                        }
+                        _ => return Err(CmdError::SyntaxError),
+                    }
+                }
+                ParsedCmd::Zrevrangebyscore { key, max, min, withscores, limit }
+            }
+            // More Key
+            "RENAME" => {
+                if args.len() != 2 {
+                    return Err(wrong_arg_count("rename"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let newkey = iter.next().unwrap();
+                ParsedCmd::Rename { key, newkey }
+            }
+            "RENAMENX" => {
+                if args.len() != 2 {
+                    return Err(wrong_arg_count("renamenx"));
+                }
+                let mut iter = args.into_iter();
+                let key = iter.next().unwrap();
+                let newkey = iter.next().unwrap();
+                ParsedCmd::Renamenx { key, newkey }
+            }
+            "RANDOMKEY" => ParsedCmd::Randomkey,
             _ => return Err(CmdError::UnknownCommand),
         })
     }

@@ -15,6 +15,33 @@ pub enum ParsedCmd {
     Get {
         key: String,
     },
+    Incr {
+        key: String,
+    },
+    Decr {
+        key: String,
+    },
+    Incrby {
+        key: String,
+        delta: i64,
+    },
+    Decrby {
+        key: String,
+        delta: i64,
+    },
+    Append {
+        key: String,
+        value: String,
+    },
+    Strlen {
+        key: String,
+    },
+    Mget {
+        keys: Vec<String>,
+    },
+    Mset {
+        pairs: Vec<(String, String)>,
+    },
     Rpush {
         key: String,
         values: Vec<String>,
@@ -35,6 +62,24 @@ pub enum ParsedCmd {
         key: String,
         count: Option<usize>,
     },
+    Rpop {
+        key: String,
+        count: Option<usize>,
+    },
+    Lindex {
+        key: String,
+        index: i64,
+    },
+    Lrem {
+        key: String,
+        count: i64,
+        value: String,
+    },
+    Ltrim {
+        key: String,
+        start: i64,
+        stop: i64,
+    },
     Flushdb,
     Blpop {
         keys: Vec<String>,
@@ -43,6 +88,12 @@ pub enum ParsedCmd {
     Command {
         subcommand: Option<String>,
         name: Option<String>,
+    },
+    Info {
+        section: Option<String>,
+    },
+    ConfigGet {
+        parameter: String,
     },
     // Streams
     Xadd {
@@ -128,6 +179,23 @@ pub enum ParsedCmd {
     Scard {
         key: String,
     },
+    Spop {
+        key: String,
+        count: Option<usize>,
+    },
+    Srandmember {
+        key: String,
+        count: Option<i64>,
+    },
+    Sunion {
+        keys: Vec<String>,
+    },
+    Sinter {
+        keys: Vec<String>,
+    },
+    Sdiff {
+        keys: Vec<String>,
+    },
     // Sorted Set
     Zadd {
         key: String,
@@ -147,6 +215,143 @@ pub enum ParsedCmd {
         key: String,
         member: String,
     },
+    Zrem {
+        key: String,
+        members: Vec<String>,
+    },
+    Zcard {
+        key: String,
+    },
+    Zcount {
+        key: String,
+        min: String,
+        max: String,
+    },
+    Zrangebyscore {
+        key: String,
+        min: String,
+        max: String,
+        withscores: bool,
+        limit: Option<(usize, usize)>,
+    },
+    Zincrby {
+        key: String,
+        incr: i64,
+        member: String,
+    },
+    Zrevrange {
+        key: String,
+        start: i64,
+        stop: i64,
+        withscores: bool,
+    },
+    Zrevrank {
+        key: String,
+        member: String,
+    },
+    // Key Management
+    Del {
+        keys: Vec<String>,
+    },
+    Exists {
+        keys: Vec<String>,
+    },
+    Type {
+        key: String,
+    },
+    Keys {
+        pattern: String,
+    },
+    Dbsize,
+    // Expiry Management
+    Expire {
+        key: String,
+        seconds: u64,
+    },
+    Ttl {
+        key: String,
+    },
+    Persist {
+        key: String,
+    },
+    // More String
+    Getset {
+        key: String,
+        value: String,
+    },
+    Getrange {
+        key: String,
+        start: i64,
+        end: i64,
+    },
+    Setrange {
+        key: String,
+        offset: u64,
+        value: String,
+    },
+    Msetnx {
+        pairs: Vec<(String, String)>,
+    },
+    // More List
+    Rpoplpush {
+        source: String,
+        destination: String,
+    },
+    Lset {
+        key: String,
+        index: i64,
+        value: String,
+    },
+    // More Hash
+    Hincrby {
+        key: String,
+        field: String,
+        incr: i64,
+    },
+    Hincrbyfloat {
+        key: String,
+        field: String,
+        incr: f64,
+    },
+    Hsetnx {
+        key: String,
+        field: String,
+        value: String,
+    },
+    // More Set
+    Smove {
+        source: String,
+        destination: String,
+        member: String,
+    },
+    // More ZSet
+    Zremrangebyrank {
+        key: String,
+        start: i64,
+        stop: i64,
+    },
+    Zremrangebyscore {
+        key: String,
+        min: String,
+        max: String,
+    },
+    Zrevrangebyscore {
+        key: String,
+        max: String,
+        min: String,
+        withscores: bool,
+        limit: Option<(usize, usize)>,
+    },
+    // More Key
+    Rename {
+        key: String,
+        newkey: String,
+    },
+    Renamenx {
+        key: String,
+        newkey: String,
+    },
+    Randomkey,
 }
 
 #[derive(Debug, thiserror::Error)]

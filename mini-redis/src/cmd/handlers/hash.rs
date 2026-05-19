@@ -139,3 +139,67 @@ pub fn handle_hvals(key: &str) -> RespType {
 fn wrong_type() -> RespType {
     RespType::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string())
 }
+
+pub fn handle_hincrby(key: &str, field: &str, incr: i64) -> RespType {
+    with_db(|db| {
+        let entry = db.entry(key.to_string()).or_insert_with(|| {
+            crate::db::Entry::new(Value::Hash(std::collections::HashMap::new()), None)
+        });
+        match &mut entry.value {
+            Value::Hash(hash) => {
+                let mb = bytes::Bytes::from(field.as_bytes().to_vec());
+                let current: i64 = hash
+                    .get(&mb)
+                    .and_then(|v| std::str::from_utf8(v).ok())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0);
+                let new_val = current.wrapping_add(incr);
+                hash.insert(mb, bytes::Bytes::from(new_val.to_string()));
+                RespType::Integer(new_val)
+            }
+            _ => wrong_type(),
+        }
+    })
+}
+
+pub fn handle_hincrbyfloat(key: &str, field: &str, incr: f64) -> RespType {
+    with_db(|db| {
+        let entry = db.entry(key.to_string()).or_insert_with(|| {
+            crate::db::Entry::new(Value::Hash(std::collections::HashMap::new()), None)
+        });
+        match &mut entry.value {
+            Value::Hash(hash) => {
+                let mb = bytes::Bytes::from(field.as_bytes().to_vec());
+                let current: f64 = hash
+                    .get(&mb)
+                    .and_then(|v| std::str::from_utf8(v).ok())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(0.0);
+                let new_val = current + incr;
+                hash.insert(mb, bytes::Bytes::from(format!("{}", new_val).into_bytes()));
+                RespType::BulkString(Some(bytes::Bytes::from(format!("{}", new_val).into_bytes())))
+            }
+            _ => wrong_type(),
+        }
+    })
+}
+
+pub fn handle_hsetnx(key: &str, field: &str, value: &str) -> RespType {
+    with_db(|db| {
+        let entry = db.entry(key.to_string()).or_insert_with(|| {
+            crate::db::Entry::new(Value::Hash(std::collections::HashMap::new()), None)
+        });
+        match &mut entry.value {
+            Value::Hash(hash) => {
+                let mb = bytes::Bytes::from(field.as_bytes().to_vec());
+                if hash.contains_key(&mb) {
+                    RespType::Integer(0)
+                } else {
+                    hash.insert(mb, bytes::Bytes::from(value.as_bytes().to_vec()));
+                    RespType::Integer(1)
+                }
+            }
+            _ => wrong_type(),
+        }
+    })
+}

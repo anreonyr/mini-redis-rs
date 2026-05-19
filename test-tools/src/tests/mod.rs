@@ -1,4 +1,5 @@
 pub mod connection;
+pub mod key;
 pub mod string;
 pub mod expiry;
 pub mod list;

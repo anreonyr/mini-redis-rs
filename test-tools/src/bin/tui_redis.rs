@@ -11,7 +11,7 @@ use ratatui::{Frame, Terminal};
 use std::sync::mpsc;
 use std::time::Duration;
 use test_tools::{ALL_TESTS, BENCHMARKS, run_test, run_bench, TestResult, BenchResult, RedisClient};
-use tokio::runtime::Runtime;
+use tokio::runtime::{Builder as RtBuilder, Runtime};
 
 // ── Category definitions (metadata only) ─────────────────────────────────
 
@@ -798,7 +798,12 @@ fn draw_results(f: &mut Frame, app: &mut App) {
 // ── Main ─────────────────────────────────────────────────────────────────
 
 fn main() -> std::io::Result<()> {
-    let rt = Runtime::new().unwrap();
+    let rt = RtBuilder::new_multi_thread()
+        .enable_io()
+        .enable_time()
+        .thread_stack_size(4 * 1024 * 1024)
+        .build()
+        .unwrap();
 
     enable_raw_mode()?;
     let mut stdout = std::io::stdout();

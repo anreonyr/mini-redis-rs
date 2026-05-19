@@ -80,3 +80,25 @@ pub fn handle_flushdb() -> RespType {
     crate::db::flushdb();
     RespType::SimpleString("OK".to_string())
 }
+
+pub fn handle_info(section: Option<String>) -> RespType {
+    let text = match section.as_deref() {
+        Some("server") => "# Server\r\nredis_version:0.1.0\r\n",
+        _ => "# Server\r\nredis_version:0.1.0\r\n",
+    };
+    RespType::BulkString(Some(bytes::Bytes::copy_from_slice(text.as_bytes())))
+}
+
+pub fn handle_config_get(parameter: &str) -> RespType {
+    let value = match parameter.to_lowercase().as_str() {
+        "dir" => ".",
+        "dbfilename" => "dump.rdb",
+        "maxclients" => "10000",
+        "databases" => "1",
+        _ => return RespType::Array(Some(vec![])),
+    };
+    RespType::Array(Some(vec![
+        RespType::BulkString(Some(bytes::Bytes::copy_from_slice(parameter.as_bytes()))),
+        RespType::BulkString(Some(bytes::Bytes::copy_from_slice(value.as_bytes()))),
+    ]))
+}

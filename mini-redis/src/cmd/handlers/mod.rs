@@ -1,5 +1,7 @@
 pub(super) mod connection;
+pub(super) mod expiry;
 pub(super) mod hash;
+pub(super) mod key;
 pub(super) mod list;
 pub(super) mod set;
 pub(super) mod stream;
@@ -7,7 +9,9 @@ pub(super) mod string;
 pub(super) mod zset;
 
 pub(super) use connection::*;
+pub(super) use expiry::*;
 pub(super) use hash::*;
+pub(super) use key::*;
 pub(super) use list::*;
 pub(super) use set::*;
 pub(super) use stream::*;

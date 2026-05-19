@@ -151,3 +151,31 @@ pub async fn test_hvals(client: &mut RedisClient) -> Result<(), String> {
         _ => Err(format!("HVALS: expected Array of 2 items, got {}", r)),
     }
 }
+
+pub async fn test_hincrby(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["HSET", "test_rs:hi", "counter", "10"]).await?;
+    let r = client.cmd(&["HINCRBY", "test_rs:hi", "counter", "5"]).await?;
+    crate::assert_resp!(r, int(15), "HINCRBY");
+    Ok(())
+}
+
+pub async fn test_hincrby_new(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["HINCRBY", "test_rs:hi2", "counter", "5"]).await?;
+    crate::assert_resp!(r, int(5), "HINCRBY new field");
+    Ok(())
+}
+
+pub async fn test_hincrbyfloat(client: &mut RedisClient) -> Result<(), String> {
+    let _ = client.cmd(&["HSET", "test_rs:hif", "val", "1.0"]).await?;
+    let r = client.cmd(&["HINCRBYFLOAT", "test_rs:hif", "val", "0.5"]).await?;
+    assert!(matches!(&r, RespType::BulkString(Some(_))), "HINCRBYFLOAT");
+    Ok(())
+}
+
+pub async fn test_hsetnx(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["HSETNX", "test_rs:hsn", "field", "value"]).await?;
+    crate::assert_resp!(r, int(1), "HSETNX new");
+    let r = client.cmd(&["HSETNX", "test_rs:hsn", "field", "value2"]).await?;
+    crate::assert_resp!(r, int(0), "HSETNX existing");
+    Ok(())
+}

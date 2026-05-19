@@ -10,7 +10,11 @@
       "PowerShell(Get-Process *)",
       "Bash(Start-Sleep -Seconds 2)",
       "PowerShell(Stop-Process -Name \"mini-redis\" -Force -ErrorAction SilentlyContinue)",
-      "PowerShell(cargo build --release 2>&1)"
+      "PowerShell(cargo build --release 2>&1)",
+      "Bash(Get-Process -Name \"mini-redis\" -ErrorAction SilentlyContinue)",
+      "Bash(Stop-Process -Force)",
+      "PowerShell(Stop-Process -Force)",
+      "Skill(superpowers:systematic-debugging)"
     ]
   }
 }

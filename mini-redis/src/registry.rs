@@ -74,6 +74,62 @@ pub fn init() {
         summary: "Gets the string value of a key, or nil when key does not exist",
     });
     reg.register(CommandInfo {
+        name: "INCR",
+        arity: 2,
+        category: "String",
+        since_stage: 0,
+        summary: "Increments the integer value of a key by one",
+    });
+    reg.register(CommandInfo {
+        name: "DECR",
+        arity: 2,
+        category: "String",
+        since_stage: 0,
+        summary: "Decrements the integer value of a key by one",
+    });
+    reg.register(CommandInfo {
+        name: "INCRBY",
+        arity: 3,
+        category: "String",
+        since_stage: 0,
+        summary: "Increments the integer value of a key by a given amount",
+    });
+    reg.register(CommandInfo {
+        name: "DECRBY",
+        arity: 3,
+        category: "String",
+        since_stage: 0,
+        summary: "Decrements the integer value of a key by a given amount",
+    });
+    reg.register(CommandInfo {
+        name: "APPEND",
+        arity: 3,
+        category: "String",
+        since_stage: 0,
+        summary: "Appends a value to a key",
+    });
+    reg.register(CommandInfo {
+        name: "STRLEN",
+        arity: 2,
+        category: "String",
+        since_stage: 0,
+        summary: "Returns the length of the string value of a key",
+    });
+    reg.register(CommandInfo {
+        name: "MGET",
+        arity: -2,
+        category: "String",
+        since_stage: 0,
+        summary: "Gets the values of all the given keys",
+    });
+    reg.register(CommandInfo {
+        name: "MSET",
+        arity: -3,
+        category: "String",
+        since_stage: 0,
+        summary: "Sets multiple keys to multiple values",
+    });
+    reg.register(CommandInfo {
         name: "RPUSH",
         arity: -3,
         category: "List",
@@ -109,6 +165,34 @@ pub fn init() {
         summary: "Removes and returns the first element(s) of a list",
     });
     reg.register(CommandInfo {
+        name: "RPOP",
+        arity: -2,
+        category: "List",
+        since_stage: 0,
+        summary: "Removes and returns the last element(s) of a list",
+    });
+    reg.register(CommandInfo {
+        name: "LINDEX",
+        arity: 3,
+        category: "List",
+        since_stage: 0,
+        summary: "Returns an element from a list by its index",
+    });
+    reg.register(CommandInfo {
+        name: "LREM",
+        arity: 4,
+        category: "List",
+        since_stage: 0,
+        summary: "Removes elements from a list by value",
+    });
+    reg.register(CommandInfo {
+        name: "LTRIM",
+        arity: 4,
+        category: "List",
+        since_stage: 0,
+        summary: "Trims a list to the specified range",
+    });
+    reg.register(CommandInfo {
         name: "BLPOP",
         arity: -3,
         category: "List",
@@ -128,6 +212,20 @@ pub fn init() {
         category: "Server",
         since_stage: 0,
         summary: "Removes all data from the current database",
+    });
+    reg.register(CommandInfo {
+        name: "INFO",
+        arity: -1,
+        category: "Server",
+        since_stage: 0,
+        summary: "Returns information about the server",
+    });
+    reg.register(CommandInfo {
+        name: "CONFIG",
+        arity: -2,
+        category: "Server",
+        since_stage: 0,
+        summary: "Gets configuration parameters",
     });
     // Streams
     reg.register(CommandInfo {
@@ -178,6 +276,182 @@ pub fn init() {
         category: "Stream",
         since_stage: 0,
         summary: "Reads data from one or more streams",
+    });
+    // Key Management
+    reg.register(CommandInfo {
+        name: "DEL",
+        arity: -2,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Deletes one or more keys",
+    });
+    reg.register(CommandInfo {
+        name: "EXISTS",
+        arity: -2,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Determines whether one or more keys exist",
+    });
+    reg.register(CommandInfo {
+        name: "TYPE",
+        arity: 2,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Returns the type of a key",
+    });
+    reg.register(CommandInfo {
+        name: "KEYS",
+        arity: 2,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Finds all keys matching a pattern",
+    });
+    reg.register(CommandInfo {
+        name: "DBSIZE",
+        arity: 1,
+        category: "Server",
+        since_stage: 0,
+        summary: "Returns the number of keys in the database",
+    });
+    // Expiry Management
+    reg.register(CommandInfo {
+        name: "EXPIRE",
+        arity: 3,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Sets a key's time to live in seconds",
+    });
+    reg.register(CommandInfo {
+        name: "TTL",
+        arity: 2,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Gets the remaining time to live of a key in seconds",
+    });
+    reg.register(CommandInfo {
+        name: "PERSIST",
+        arity: 2,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Removes the expiration from a key",
+    });
+    // More String
+    reg.register(CommandInfo {
+        name: "GETSET",
+        arity: 3,
+        category: "String",
+        since_stage: 0,
+        summary: "Sets the string value and returns its old value",
+    });
+    reg.register(CommandInfo {
+        name: "GETRANGE",
+        arity: 4,
+        category: "String",
+        since_stage: 0,
+        summary: "Returns a substring of the string value",
+    });
+    reg.register(CommandInfo {
+        name: "SETRANGE",
+        arity: 4,
+        category: "String",
+        since_stage: 0,
+        summary: "Overwrites part of a string at the given offset",
+    });
+    reg.register(CommandInfo {
+        name: "MSETNX",
+        arity: -3,
+        category: "String",
+        since_stage: 0,
+        summary: "Sets multiple keys to multiple values, only if none exist",
+    });
+    // More List
+    reg.register(CommandInfo {
+        name: "RPOPLPUSH",
+        arity: 3,
+        category: "List",
+        since_stage: 0,
+        summary: "Pops an element from a list and pushes it to another",
+    });
+    reg.register(CommandInfo {
+        name: "LSET",
+        arity: 4,
+        category: "List",
+        since_stage: 0,
+        summary: "Sets the value of an element in a list by its index",
+    });
+    // More Hash
+    reg.register(CommandInfo {
+        name: "HINCRBY",
+        arity: 4,
+        category: "Hash",
+        since_stage: 0,
+        summary: "Increments the integer value of a hash field",
+    });
+    reg.register(CommandInfo {
+        name: "HINCRBYFLOAT",
+        arity: 4,
+        category: "Hash",
+        since_stage: 0,
+        summary: "Increments the float value of a hash field",
+    });
+    reg.register(CommandInfo {
+        name: "HSETNX",
+        arity: 4,
+        category: "Hash",
+        since_stage: 0,
+        summary: "Sets the value of a hash field, only if the field does not exist",
+    });
+    // More Set
+    reg.register(CommandInfo {
+        name: "SMOVE",
+        arity: 4,
+        category: "Set",
+        since_stage: 0,
+        summary: "Moves a member from one set to another",
+    });
+    // More ZSet
+    reg.register(CommandInfo {
+        name: "ZREMRANGEBYRANK",
+        arity: 4,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Removes all members in a sorted set within the given rank range",
+    });
+    reg.register(CommandInfo {
+        name: "ZREMRANGEBYSCORE",
+        arity: 4,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Removes all members in a sorted set within the given score range",
+    });
+    reg.register(CommandInfo {
+        name: "ZREVRANGEBYSCORE",
+        arity: -3,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Returns a range of members in a sorted set, by score, in reverse order",
+    });
+    // More Key
+    reg.register(CommandInfo {
+        name: "RENAME",
+        arity: 3,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Renames a key",
+    });
+    reg.register(CommandInfo {
+        name: "RENAMENX",
+        arity: 3,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Renames a key, only if the new key does not exist",
+    });
+    reg.register(CommandInfo {
+        name: "RANDOMKEY",
+        arity: 1,
+        category: "Generic",
+        since_stage: 0,
+        summary: "Returns a random key name from the database",
     });
     // Hash
     reg.register(CommandInfo {
@@ -272,6 +546,41 @@ pub fn init() {
         since_stage: 0,
         summary: "Returns the cardinality of a set",
     });
+    reg.register(CommandInfo {
+        name: "SPOP",
+        arity: -2,
+        category: "Set",
+        since_stage: 0,
+        summary: "Removes and returns random members from a set",
+    });
+    reg.register(CommandInfo {
+        name: "SRANDMEMBER",
+        arity: -2,
+        category: "Set",
+        since_stage: 0,
+        summary: "Returns random members from a set",
+    });
+    reg.register(CommandInfo {
+        name: "SUNION",
+        arity: -2,
+        category: "Set",
+        since_stage: 0,
+        summary: "Returns the union of multiple sets",
+    });
+    reg.register(CommandInfo {
+        name: "SINTER",
+        arity: -2,
+        category: "Set",
+        since_stage: 0,
+        summary: "Returns the intersection of multiple sets",
+    });
+    reg.register(CommandInfo {
+        name: "SDIFF",
+        arity: -2,
+        category: "Set",
+        since_stage: 0,
+        summary: "Returns the difference of multiple sets",
+    });
     // Sorted Set
     reg.register(CommandInfo {
         name: "ZADD",
@@ -300,6 +609,55 @@ pub fn init() {
         category: "ZSet",
         since_stage: 0,
         summary: "Returns the score of a member in a sorted set",
+    });
+    reg.register(CommandInfo {
+        name: "ZREM",
+        arity: -3,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Removes one or more members from a sorted set",
+    });
+    reg.register(CommandInfo {
+        name: "ZCARD",
+        arity: 2,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Returns the number of members in a sorted set",
+    });
+    reg.register(CommandInfo {
+        name: "ZCOUNT",
+        arity: 4,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Counts the members in a sorted set with scores within a range",
+    });
+    reg.register(CommandInfo {
+        name: "ZRANGEBYSCORE",
+        arity: -3,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Returns a range of members in a sorted set by score",
+    });
+    reg.register(CommandInfo {
+        name: "ZINCRBY",
+        arity: 4,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Increments the score of a member in a sorted set",
+    });
+    reg.register(CommandInfo {
+        name: "ZREVRANGE",
+        arity: -3,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Returns a range of members in a sorted set in reverse order",
+    });
+    reg.register(CommandInfo {
+        name: "ZREVRANK",
+        arity: 3,
+        category: "ZSet",
+        since_stage: 0,
+        summary: "Returns the rank of a member in a sorted set, ordered high to low",
     });
 }
 

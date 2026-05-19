@@ -125,3 +125,121 @@ pub async fn test_list_empty_string_element(client: &mut RedisClient) -> Result<
     crate::assert_resp!(r, bulk_str(""), "LPOP empty string");
     Ok(())
 }
+
+pub async fn test_rpop_single(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["RPUSH", "test_rs:rpop", "a", "b", "c"]).await?;
+    let r = client.cmd(&["RPOP", "test_rs:rpop"]).await?;
+    crate::assert_resp!(r, bulk_str("c"), "RPOP single");
+    Ok(())
+}
+
+pub async fn test_rpop_with_count(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["RPUSH", "test_rs:rpop2", "a", "b", "c", "d"]).await?;
+    let r = client.cmd(&["RPOP", "test_rs:rpop2", "2"]).await?;
+    crate::assert_resp!(r, arr_of_bulks(&["d", "c"]), "RPOP count 2");
+    Ok(())
+}
+
+pub async fn test_rpop_empty_key(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["RPOP", "test_rs:nonex"]).await?;
+    crate::assert_resp!(r, null_bulk(), "RPOP empty key");
+    Ok(())
+}
+
+pub async fn test_lindex_basic(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["RPUSH", "test_rs:lidx", "a", "b", "c"]).await?;
+    let r = client.cmd(&["LINDEX", "test_rs:lidx", "0"]).await?;
+    crate::assert_resp!(r, bulk_str("a"), "LINDEX 0");
+    let r = client.cmd(&["LINDEX", "test_rs:lidx", "-1"]).await?;
+    crate::assert_resp!(r, bulk_str("c"), "LINDEX -1");
+    Ok(())
+}
+
+pub async fn test_lindex_out_of_bounds(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["LINDEX", "test_rs:lidx", "10"]).await?;
+    crate::assert_resp!(r, null_bulk(), "LINDEX out of bounds");
+    Ok(())
+}
+
+pub async fn test_lindex_nonexistent(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["LINDEX", "test_rs:nokey", "0"]).await?;
+    crate::assert_resp!(r, null_bulk(), "LINDEX nonexistent key");
+    Ok(())
+}
+
+pub async fn test_lrem_positive_count(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["RPUSH", "test_rs:lrem", "a", "b", "a", "c", "a"]).await?;
+    let r = client.cmd(&["LREM", "test_rs:lrem", "2", "a"]).await?;
+    crate::assert_resp!(r, int(2), "LREM count 2");
+    let r = client.cmd(&["LRANGE", "test_rs:lrem", "0", "-1"]).await?;
+    crate::assert_resp!(r, arr_of_bulks(&["b", "c", "a"]), "LREM result");
+    Ok(())
+}
+
+pub async fn test_lrem_negative_count(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["RPUSH", "test_rs:lrem2", "a", "b", "a", "c", "a"]).await?;
+    let r = client.cmd(&["LREM", "test_rs:lrem2", "-2", "a"]).await?;
+    crate::assert_resp!(r, int(2), "LREM count -2");
+    let r = client.cmd(&["LRANGE", "test_rs:lrem2", "0", "-1"]).await?;
+    crate::assert_resp!(r, arr_of_bulks(&["a", "b", "c"]), "LREM negative result");
+    Ok(())
+}
+
+pub async fn test_lrem_all(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["RPUSH", "test_rs:lrem3", "a", "b", "a", "c", "a"]).await?;
+    let r = client.cmd(&["LREM", "test_rs:lrem3", "0", "a"]).await?;
+    crate::assert_resp!(r, int(3), "LREM count 0");
+    let r = client.cmd(&["LRANGE", "test_rs:lrem3", "0", "-1"]).await?;
+    crate::assert_resp!(r, arr_of_bulks(&["b", "c"]), "LREM all result");
+    Ok(())
+}
+
+pub async fn test_lrem_nonexistent(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["LREM", "test_rs:nokey", "0", "a"]).await?;
+    crate::assert_resp!(r, int(0), "LREM nonexistent key");
+    Ok(())
+}
+
+pub async fn test_ltrim_basic(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["RPUSH", "test_rs:ltrim", "0", "1", "2", "3", "4"]).await?;
+    let r = client.cmd(&["LTRIM", "test_rs:ltrim", "1", "3"]).await?;
+    crate::assert_resp!(r, simple_str("OK"), "LTRIM OK");
+    let r = client.cmd(&["LRANGE", "test_rs:ltrim", "0", "-1"]).await?;
+    crate::assert_resp!(r, arr_of_bulks(&["1", "2", "3"]), "LTRIM result");
+    Ok(())
+}
+
+pub async fn test_ltrim_negative_indices(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["RPUSH", "test_rs:ltrim2", "a", "b", "c", "d"]).await?;
+    let r = client.cmd(&["LTRIM", "test_rs:ltrim2", "-2", "-1"]).await?;
+    crate::assert_resp!(r, simple_str("OK"), "LTRIM negative");
+    let r = client.cmd(&["LRANGE", "test_rs:ltrim2", "0", "-1"]).await?;
+    crate::assert_resp!(r, arr_of_bulks(&["c", "d"]), "LTRIM negative result");
+    Ok(())
+}
+
+pub async fn test_ltrim_nonexistent(client: &mut RedisClient) -> Result<(), String> {
+    let r = client.cmd(&["LTRIM", "test_rs:nokey", "0", "1"]).await?;
+    crate::assert_resp!(r, simple_str("OK"), "LTRIM nonexistent key");
+    Ok(())
+}
+
+pub async fn test_rpoplpush(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["RPUSH", "test_rs:rpls", "a", "b", "c"]).await?;
+    let r = client.cmd(&["RPOPLPUSH", "test_rs:rpls", "test_rs:rpld"]).await?;
+    crate::assert_resp!(r, bulk_str("c"), "RPOPLPUSH popped");
+    let r = client.cmd(&["LRANGE", "test_rs:rpls", "0", "-1"]).await?;
+    crate::assert_resp!(r, arr_of_bulks(&["a", "b"]), "RPOPLPUSH source");
+    let r = client.cmd(&["LRANGE", "test_rs:rpld", "0", "-1"]).await?;
+    crate::assert_resp!(r, arr_of_bulks(&["c"]), "RPOPLPUSH dest");
+    Ok(())
+}
+
+pub async fn test_lset(client: &mut RedisClient) -> Result<(), String> {
+    client.cmd(&["RPUSH", "test_rs:lset", "a", "b", "c"]).await?;
+    let r = client.cmd(&["LSET", "test_rs:lset", "1", "x"]).await?;
+    crate::assert_resp!(r, simple_str("OK"), "LSET");
+    let r = client.cmd(&["LINDEX", "test_rs:lset", "1"]).await?;
+    crate::assert_resp!(r, bulk_str("x"), "LSET verify");
+    Ok(())
+}

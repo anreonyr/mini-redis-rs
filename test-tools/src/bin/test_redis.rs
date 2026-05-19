@@ -7,8 +7,22 @@ const BOLD: &str = "\x1b[1m";
 const DIM: &str = "\x1b[2m";
 const RESET: &str = "\x1b[0m";
 
-#[tokio::main]
-async fn main() {
+fn main() {
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_io()
+        .enable_time()
+        .thread_stack_size(4 * 1024 * 1024)
+        .build()
+        .unwrap();
+    // Spawn on a worker thread (which has the 4MB stack) instead of
+    // running directly on the main thread's 1MB stack.
+    rt.block_on(async {
+        let handle = rt.spawn(async { main_async().await });
+        handle.await.unwrap();
+    });
+}
+
+async fn main_async() {
     let filters: Vec<String> = std::env::args()
         .skip(1)
         .map(|a| a.to_uppercase())
