@@ -30,6 +30,9 @@ pub struct ConnectionState {
     pub transaction: Option<TransactionState>,
     pub watching: HashMap<String, u64>,
     pub subscription: Option<SubscriptionState>,
+    pub db_index: usize,
+    pub quit: bool,
+    pub client_name: Option<String>,
 }
 
 impl ConnectionState {
@@ -39,6 +42,9 @@ impl ConnectionState {
             transaction: None,
             watching: HashMap::new(),
             subscription: None,
+            db_index: 0,
+            quit: false,
+            client_name: None,
         }
     }
 

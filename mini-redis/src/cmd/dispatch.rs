@@ -21,6 +21,9 @@ pub fn dispatch_command<'a>(
         Err(e) => return Box::pin(async move { resp::RespType::Error(e.to_string()) }),
     };
 
+    // Set current database for this connection
+    crate::db::set_current_db(state.db_index);
+
     // Auth check: if requirepass is set and not authenticated and not a bypass command, reject
     if !state.is_authenticated()
         && config::with_config(|cfg| cfg.requirepass_is_set())

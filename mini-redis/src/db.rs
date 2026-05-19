@@ -1,12 +1,26 @@
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{LazyLock, Mutex};
 use tokio::time::Instant;
 
-static DB: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+pub const NUM_DBS: usize = 16;
+
+static DBS: LazyLock<Mutex<Vec<HashMap<String, Entry>>>> = LazyLock::new(|| {
+    let mut vec = Vec::with_capacity(NUM_DBS);
+    for _ in 0..NUM_DBS {
+        vec.push(HashMap::new());
+    }
+    Mutex::new(vec)
+});
 static VERSION_COUNTER: AtomicU64 = AtomicU64::new(1);
+static CURRENT_DB: AtomicUsize = AtomicUsize::new(0);
+
+/// Set the current database index (used by dispatch_command before calling handlers).
+pub fn set_current_db(index: usize) {
+    CURRENT_DB.store(index.min(NUM_DBS - 1), Ordering::Relaxed);
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StreamEntry {
@@ -63,13 +77,25 @@ pub fn with_db<F, R>(f: F) -> R
 where
     F: FnOnce(&mut HashMap<String, Entry>) -> R,
 {
-    let mut db = DB.lock().unwrap();
-    f(&mut db)
+    let idx = CURRENT_DB.load(Ordering::Relaxed);
+    let mut dbs = DBS.lock().unwrap();
+    f(&mut dbs[idx])
+}
+
+pub fn with_db_at<F, R>(index: usize, f: F) -> R
+where
+    F: FnOnce(&mut HashMap<String, Entry>) -> R,
+{
+    let mut dbs = DBS.lock().unwrap();
+    let idx = index.min(dbs.len() - 1);
+    f(&mut dbs[idx])
 }
 
 pub fn flushdb() {
-    let mut db = DB.lock().unwrap();
-    db.clear();
+    let mut dbs = DBS.lock().unwrap();
+    for db in dbs.iter_mut() {
+        db.clear();
+    }
 }
 
 /// Increment and return the next version number.
@@ -80,8 +106,9 @@ pub fn bump_version() -> u64 {
 /// Get the current version of a key, or None if the key doesn't exist.
 /// Locks the DB internally. Do NOT call from inside `with_db()` (deadlock risk).
 pub fn key_version(key: &str) -> Option<u64> {
-    let db = DB.lock().unwrap();
-    db.get(key).map(|e| e.version)
+    let idx = CURRENT_DB.load(Ordering::Relaxed);
+    let dbs = DBS.lock().unwrap();
+    dbs[idx].get(key).map(|e| e.version)
 }
 
 /// Get a key's version from an already-locked DB reference (safe inside `with_db`).
