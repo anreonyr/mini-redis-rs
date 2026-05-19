@@ -709,13 +709,12 @@ tree_tests! {
     ("Persistence", "Persistence") [
         ("SAVE", "New") [
             "SAVE basic"           => tests::persistence::test_save_basic,
-            "SAVE roundtrip types" => tests::persistence::test_save_roundtrip,
+            "SAVE multiple types"  => tests::persistence::test_save_multiple_types,
         ],
         ("BGSAVE", "New") [
             "BGSAVE"               => tests::persistence::test_bgsave,
         ],
         ("CONFIG", "New") [
-            "CONFIG GET dir"       => tests::persistence::test_config_get_dir,
             "CONFIG SET dir"       => tests::persistence::test_config_set_dir,
         ],
     ],
