@@ -440,6 +440,27 @@ pub fn init() {
         summary: "Authenticates the connection using a password",
     });
     reg.register(CommandInfo {
+        name: "PUBLISH",
+        arity: 3,
+        category: "PubSub",
+        since_stage: 0,
+        summary: "Posts a message to a channel",
+    });
+    reg.register(CommandInfo {
+        name: "SUBSCRIBE",
+        arity: -2,
+        category: "PubSub",
+        since_stage: 0,
+        summary: "Subscribes to one or more channels",
+    });
+    reg.register(CommandInfo {
+        name: "UNSUBSCRIBE",
+        arity: -1,
+        category: "PubSub",
+        since_stage: 0,
+        summary: "Unsubscribes from one or more channels",
+    });
+    reg.register(CommandInfo {
         name: "SAVE",
         arity: 1,
         category: "Server",

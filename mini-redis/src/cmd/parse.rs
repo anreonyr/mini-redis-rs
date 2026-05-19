@@ -868,6 +868,24 @@ impl ParsedCmd {
             "EXEC" => ParsedCmd::Exec,
             "DISCARD" => ParsedCmd::Discard,
             "UNWATCH" => ParsedCmd::Unwatch,
+            "PUBLISH" => {
+                if args.len() != 2 {
+                    return Err(wrong_arg_count("publish"));
+                }
+                let mut iter = args.into_iter();
+                let channel = iter.next().unwrap();
+                let message = iter.next().unwrap();
+                ParsedCmd::Publish { channel, message }
+            }
+            "SUBSCRIBE" => {
+                if args.is_empty() {
+                    return Err(wrong_arg_count("subscribe"));
+                }
+                ParsedCmd::Subscribe { channels: args }
+            }
+            "UNSUBSCRIBE" => {
+                ParsedCmd::Unsubscribe { channels: args }
+            }
             "WATCH" => {
                 if args.is_empty() {
                     return Err(wrong_arg_count("watch"));

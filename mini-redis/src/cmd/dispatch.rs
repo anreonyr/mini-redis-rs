@@ -214,5 +214,15 @@ async fn dispatch_match<'a>(
         ParsedCmd::Discard => handlers::handle_discard(state),
         ParsedCmd::Watch { keys } => handlers::handle_watch(state, &keys),
         ParsedCmd::Unwatch => handlers::handle_unwatch(state),
+        // Pub/Sub
+        ParsedCmd::Publish { channel, message } => {
+            handlers::handle_publish(&channel, &message)
+        }
+        ParsedCmd::Subscribe { channels } => {
+            handlers::handle_subscribe(state, &channels)
+        }
+        ParsedCmd::Unsubscribe { channels } => {
+            handlers::handle_unsubscribe(state, &channels)
+        }
     }
 }

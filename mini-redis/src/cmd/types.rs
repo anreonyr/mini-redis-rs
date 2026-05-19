@@ -371,6 +371,17 @@ pub enum ParsedCmd {
     Watch {
         keys: Vec<String>,
     },
+    // Pub/Sub
+    Publish {
+        channel: String,
+        message: String,
+    },
+    Subscribe {
+        channels: Vec<String>,
+    },
+    Unsubscribe {
+        channels: Vec<String>,
+    },
 }
 
 impl ParsedCmd {
@@ -473,6 +484,9 @@ impl ParsedCmd {
             ParsedCmd::Multi => "MULTI",
             ParsedCmd::Unwatch => "UNWATCH",
             ParsedCmd::Watch { .. } => "WATCH",
+            ParsedCmd::Publish { .. } => "PUBLISH",
+            ParsedCmd::Subscribe { .. } => "SUBSCRIBE",
+            ParsedCmd::Unsubscribe { .. } => "UNSUBSCRIBE",
         }
     }
 }

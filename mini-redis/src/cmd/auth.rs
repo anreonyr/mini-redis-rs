@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use crate::cmd::types::ParsedCmd;
 use crate::config;
+use crate::pubsub::Message;
 use crate::resp::RespType;
+use tokio::sync::mpsc::UnboundedReceiver;
 
 #[derive(Clone)]
 pub struct TransactionState {
@@ -17,11 +19,17 @@ impl TransactionState {
     }
 }
 
+/// Per-connection subscription state (only set in subscription mode).
+pub struct SubscriptionState {
+    pub rx: UnboundedReceiver<Message>,
+}
+
 /// Per-connection authentication and transaction state.
 pub struct ConnectionState {
     authenticated: bool,
     pub transaction: Option<TransactionState>,
     pub watching: HashMap<String, u64>,
+    pub subscription: Option<SubscriptionState>,
 }
 
 impl ConnectionState {
@@ -30,7 +38,12 @@ impl ConnectionState {
             authenticated: false,
             transaction: None,
             watching: HashMap::new(),
+            subscription: None,
         }
+    }
+
+    pub fn is_subscribed(&self) -> bool {
+        self.subscription.is_some()
     }
 
     pub fn is_authenticated(&self) -> bool {
