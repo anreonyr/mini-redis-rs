@@ -27,6 +27,7 @@ pub fn handle_zadd(key: &str, members: &[(i64, String)]) -> RespType {
                         new_count += 1;
                     }
                 }
+                entry.version = crate::db::bump_version();
                 RespType::Integer(new_count)
             }
             _ => wrong_type(),
@@ -124,6 +125,7 @@ pub fn handle_zrem(key: &str, members: &[String]) -> RespType {
                         removed += 1;
                     }
                 }
+                entry.version = crate::db::bump_version();
                 if set.is_empty() {
                     db.remove(key);
                 }
@@ -248,6 +250,7 @@ pub fn handle_zincrby(key: &str, incr: i64, member: &str) -> RespType {
                     incr
                 };
                 set.insert((new_score, mb));
+                entry.version = crate::db::bump_version();
                 RespType::BulkString(Some(bytes::Bytes::copy_from_slice(
                     new_score.to_string().as_bytes(),
                 )))
@@ -333,6 +336,7 @@ pub fn handle_zremrangebyrank(key: &str, start: i64, stop: i64) -> RespType {
                 for t in &to_remove {
                     set.remove(t);
                 }
+                entry.version = crate::db::bump_version();
                 if set.is_empty() {
                     db.remove(key);
                 }
@@ -363,6 +367,7 @@ pub fn handle_zremrangebyscore(key: &str, min: &str, max: &str) -> RespType {
                 for t in &to_remove {
                     set.remove(t);
                 }
+                entry.version = crate::db::bump_version();
                 if set.is_empty() {
                     db.remove(key);
                 }

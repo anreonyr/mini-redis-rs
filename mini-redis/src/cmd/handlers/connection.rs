@@ -83,6 +83,7 @@ pub fn handle_command(subcommand: Option<String>, name: Option<String>) -> RespT
 
 pub fn handle_flushdb() -> RespType {
     crate::db::flushdb();
+    crate::db::bump_version();
     RespType::SimpleString("OK".to_string())
 }
 

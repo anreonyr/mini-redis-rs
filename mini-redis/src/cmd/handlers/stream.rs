@@ -98,6 +98,7 @@ pub fn handle_xadd(key: &str, id_spec: &str, field_args: &[String]) -> RespType 
                     fields,
                 });
 
+                entry.version = crate::db::bump_version();
                 RespType::BulkString(Some(Bytes::from(final_id)))
             }
             _ => wrong_type(),
@@ -194,6 +195,7 @@ pub fn handle_xtrim(key: &str, _strategy: &str, threshold: u64, _exact: bool) ->
                 if before > threshold as usize {
                     let to_remove = before - threshold as usize;
                     stream.entries.drain(..to_remove);
+                    entry.version = crate::db::bump_version();
                     if stream.entries.is_empty() {
                         stream.last_timestamp_ms = 0;
                         stream.last_seq = 0;
@@ -216,6 +218,7 @@ pub fn handle_xdel(key: &str, ids: &[String]) -> RespType {
                 let before = stream.entries.len();
                 stream.entries.retain(|e| !ids.contains(&e.id));
                 let removed = before - stream.entries.len();
+                entry.version = crate::db::bump_version();
                 if stream.entries.is_empty() {
                     db.remove(key);
                 }

@@ -19,6 +19,7 @@ pub fn handle_hset(key: &str, fields: &[(String, String)]) -> RespType {
                         new_count += 1;
                     }
                 }
+                entry.version = crate::db::bump_version();
                 RespType::Integer(new_count)
             }
             _ => wrong_type(),
@@ -53,6 +54,7 @@ pub fn handle_hdel(key: &str, fields: &[String]) -> RespType {
                         removed += 1;
                     }
                 }
+                entry.version = crate::db::bump_version();
                 if map.is_empty() {
                     db.remove(key);
                 }
@@ -155,6 +157,7 @@ pub fn handle_hincrby(key: &str, field: &str, incr: i64) -> RespType {
                     .unwrap_or(0);
                 let new_val = current.wrapping_add(incr);
                 hash.insert(mb, bytes::Bytes::from(new_val.to_string()));
+                entry.version = crate::db::bump_version();
                 RespType::Integer(new_val)
             }
             _ => wrong_type(),
@@ -177,6 +180,7 @@ pub fn handle_hincrbyfloat(key: &str, field: &str, incr: f64) -> RespType {
                     .unwrap_or(0.0);
                 let new_val = current + incr;
                 hash.insert(mb, bytes::Bytes::from(format!("{}", new_val).into_bytes()));
+                entry.version = crate::db::bump_version();
                 RespType::BulkString(Some(bytes::Bytes::from(format!("{}", new_val).into_bytes())))
             }
             _ => wrong_type(),
@@ -196,6 +200,7 @@ pub fn handle_hsetnx(key: &str, field: &str, value: &str) -> RespType {
                     RespType::Integer(0)
                 } else {
                     hash.insert(mb, bytes::Bytes::from(value.as_bytes().to_vec()));
+                    entry.version = crate::db::bump_version();
                     RespType::Integer(1)
                 }
             }

@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use tokio::time::Instant;
 
-use crate::db::{Entry, Value, with_db};
+use crate::db::{bump_version, Entry, Value, with_db};
 use crate::resp;
 use crate::resp::RespType;
 use std::time::Duration;
@@ -76,6 +76,7 @@ fn incrby(key: &str, delta: i64) -> RespType {
                 };
                 let new_val = current.wrapping_add(delta);
                 entry.value = Value::String(Bytes::from(new_val.to_string()));
+                entry.version = bump_version();
                 RespType::Integer(new_val)
             }
             _ => wrong_type(),
@@ -93,6 +94,7 @@ pub fn handle_append(key: &str, value: &str) -> RespType {
                 let mut data = v.to_vec();
                 data.extend_from_slice(value.as_bytes());
                 *v = Bytes::from(data);
+                entry.version = bump_version();
                 RespType::Integer(v.len() as i64)
             }
             _ => wrong_type(),
@@ -226,6 +228,7 @@ pub fn handle_setrange(key: &str, offset: u64, value: &str) -> RespType {
                     new_data[off..off + val_bytes.len()].copy_from_slice(val_bytes);
                     *v = Bytes::from(new_data);
                 }
+                entry.version = bump_version();
                 RespType::Integer(v.len() as i64)
             }
             _ => wrong_type(),

@@ -11,6 +11,7 @@ pub fn handle_expire(key: &str, seconds: u64) -> RespType {
                 RespType::Integer(0)
             } else {
                 entry.expiry = Some(Instant::now() + Duration::from_secs(seconds));
+                entry.version = crate::db::bump_version();
                 RespType::Integer(1)
             }
         }
@@ -45,6 +46,7 @@ pub fn handle_persist(key: &str) -> RespType {
                 RespType::Integer(0)
             } else if entry.expiry.is_some() {
                 entry.expiry = None;
+                entry.version = crate::db::bump_version();
                 RespType::Integer(1)
             } else {
                 RespType::Integer(0)
