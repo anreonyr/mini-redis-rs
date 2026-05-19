@@ -7,7 +7,10 @@
       "Bash(cargo check *)",
       "Bash(rustc --version)",
       "Bash(cargo run *)",
-      "PowerShell(Get-Process *)"
+      "PowerShell(Get-Process *)",
+      "Bash(Start-Sleep -Seconds 2)",
+      "PowerShell(Stop-Process -Name \"mini-redis\" -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(cargo build --release 2>&1)"
     ]
   }
 }

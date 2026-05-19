@@ -64,18 +64,20 @@ pub async fn test_hgetall_full(client: &mut RedisClient) -> Result<(), String> {
     let _ = client.cmd(&["HSET", "test_rs:h6", "a", "1", "b", "2"]).await?;
     let r = client.cmd(&["HGETALL", "test_rs:h6"]).await?;
     match &r {
-        RespType::Array(Some(items)) => {
-            let strs: Vec<String> = items.iter().map(|v| v.to_string()).collect();
-            // Order: a, 1, b, 2 (or b, 2, a, 1)
-            if strs.len() == 4 && strs[0] == "\"a\"" && strs[1] == "\"1\"" && strs[2] == "\"b\"" && strs[3] == "\"2\""
-                || strs[0] == "\"b\"" && strs[1] == "\"2\"" && strs[2] == "\"a\"" && strs[3] == "\"1\""
-            {
+        RespType::Array(Some(items)) if items.len() == 4 => {
+            let a = bulk_str("a");
+            let b1 = bulk_str("1");
+            let c = bulk_str("b");
+            let d = bulk_str("2");
+            let order1 = &items[0] == &a && &items[1] == &b1 && &items[2] == &c && &items[3] == &d;
+            let order2 = &items[0] == &c && &items[1] == &d && &items[2] == &a && &items[3] == &b1;
+            if order1 || order2 {
                 Ok(())
             } else {
                 Err(format!("HGETALL: unexpected order: {}", r))
             }
         }
-        _ => Err(format!("HGETALL: expected Array, got {}", r)),
+        _ => Err(format!("HGETALL: expected Array of 4 items, got {}", r)),
     }
 }
 
@@ -116,15 +118,18 @@ pub async fn test_hkeys(client: &mut RedisClient) -> Result<(), String> {
     let _ = client.cmd(&["HSET", "test_rs:h10", "name", "bob", "age", "30"]).await?;
     let r = client.cmd(&["HKEYS", "test_rs:h10"]).await?;
     match &r {
-        RespType::Array(Some(items)) => {
-            let strs: Vec<String> = items.iter().map(|v| v.to_string()).collect();
-            if strs.len() == 2 && ((strs[0] == "\"name\"" && strs[1] == "\"age\"") || (strs[0] == "\"age\"" && strs[1] == "\"name\"")) {
+        RespType::Array(Some(items)) if items.len() == 2 => {
+            let name = bulk_str("name");
+            let age = bulk_str("age");
+            let order1 = &items[0] == &name && &items[1] == &age;
+            let order2 = &items[0] == &age && &items[1] == &name;
+            if order1 || order2 {
                 Ok(())
             } else {
                 Err(format!("HKEYS: unexpected order: {}", r))
             }
         }
-        _ => Err(format!("HKEYS: expected Array, got {}", r)),
+        _ => Err(format!("HKEYS: expected Array of 2 items, got {}", r)),
     }
 }
 
@@ -132,14 +137,17 @@ pub async fn test_hvals(client: &mut RedisClient) -> Result<(), String> {
     let _ = client.cmd(&["HSET", "test_rs:h11", "name", "bob", "age", "30"]).await?;
     let r = client.cmd(&["HVALS", "test_rs:h11"]).await?;
     match &r {
-        RespType::Array(Some(items)) => {
-            let strs: Vec<String> = items.iter().map(|v| v.to_string()).collect();
-            if strs.len() == 2 && ((strs[0] == "\"bob\"" && strs[1] == "\"30\"") || (strs[0] == "\"30\"" && strs[1] == "\"bob\"")) {
+        RespType::Array(Some(items)) if items.len() == 2 => {
+            let bob = bulk_str("bob");
+            let thirty = bulk_str("30");
+            let order1 = &items[0] == &bob && &items[1] == &thirty;
+            let order2 = &items[0] == &thirty && &items[1] == &bob;
+            if order1 || order2 {
                 Ok(())
             } else {
                 Err(format!("HVALS: unexpected order: {}", r))
             }
         }
-        _ => Err(format!("HVALS: expected Array, got {}", r)),
+        _ => Err(format!("HVALS: expected Array of 2 items, got {}", r)),
     }
 }

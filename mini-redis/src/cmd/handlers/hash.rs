@@ -1,13 +1,10 @@
-use crate::db::{with_db, Value};
+use crate::db::{Value, with_db};
 use crate::resp::RespType;
 
 pub fn handle_hset(key: &str, fields: &[(String, String)]) -> RespType {
     with_db(|db| {
         let entry = db.entry(key.to_string()).or_insert_with(|| {
-            crate::db::Entry::new(
-                Value::Hash(std::collections::HashMap::new()),
-                None,
-            )
+            crate::db::Entry::new(Value::Hash(std::collections::HashMap::new()), None)
         });
         match &mut entry.value {
             Value::Hash(map) => {
@@ -15,7 +12,10 @@ pub fn handle_hset(key: &str, fields: &[(String, String)]) -> RespType {
                 for (f, v) in fields {
                     let f_bytes = f.clone().into_bytes();
                     let v_bytes = v.clone().into_bytes();
-                    if map.insert(bytes::Bytes::from(f_bytes), bytes::Bytes::from(v_bytes)).is_none() {
+                    if map
+                        .insert(bytes::Bytes::from(f_bytes), bytes::Bytes::from(v_bytes))
+                        .is_none()
+                    {
                         new_count += 1;
                     }
                 }
@@ -65,32 +65,77 @@ pub fn handle_hdel(key: &str, fields: &[String]) -> RespType {
 }
 
 pub fn handle_hgetall(key: &str) -> RespType {
-    let _ = key;
-    RespType::Error("ERR not implemented".to_string())
+    with_db(|db| match db.get(key) {
+        Some(entry) => match &entry.value {
+            Value::Hash(map) => {
+                let mut items: Vec<RespType> = Vec::with_capacity(map.len() * 2);
+                for (f, v) in map {
+                    items.push(RespType::BulkString(Some(f.clone())));
+                    items.push(RespType::BulkString(Some(v.clone())));
+                }
+                RespType::Array(Some(items))
+            }
+            _ => wrong_type(),
+        },
+        None => RespType::Array(Some(Vec::new())),
+    })
 }
 
 pub fn handle_hexists(key: &str, field: &str) -> RespType {
-    let _ = (key, field);
-    RespType::Error("ERR not implemented".to_string())
+    with_db(|db| match db.get(key) {
+        Some(entry) => match &entry.value {
+            Value::Hash(map) => {
+                let exists = map.contains_key(&bytes::Bytes::from(field.as_bytes().to_vec()));
+                RespType::Integer(if exists { 1 } else { 0 })
+            }
+            _ => wrong_type(),
+        },
+        None => RespType::Integer(0),
+    })
 }
 
 pub fn handle_hlen(key: &str) -> RespType {
-    let _ = key;
-    RespType::Error("ERR not implemented".to_string())
+    with_db(|db| match db.get(key) {
+        Some(entry) => match &entry.value {
+            Value::Hash(map) => RespType::Integer(map.len() as i64),
+            _ => wrong_type(),
+        },
+        None => RespType::Integer(0),
+    })
 }
 
 pub fn handle_hkeys(key: &str) -> RespType {
-    let _ = key;
-    RespType::Error("ERR not implemented".to_string())
+    with_db(|db| match db.get(key) {
+        Some(entry) => match &entry.value {
+            Value::Hash(map) => {
+                let fields: Vec<RespType> = map
+                    .keys()
+                    .map(|k| RespType::BulkString(Some(k.clone())))
+                    .collect();
+                RespType::Array(Some(fields))
+            }
+            _ => wrong_type(),
+        },
+        None => RespType::Array(Some(Vec::new())),
+    })
 }
 
 pub fn handle_hvals(key: &str) -> RespType {
-    let _ = key;
-    RespType::Error("ERR not implemented".to_string())
+    with_db(|db| match db.get(key) {
+        Some(entry) => match &entry.value {
+            Value::Hash(map) => {
+                let vals: Vec<RespType> = map
+                    .values()
+                    .map(|v| RespType::BulkString(Some(v.clone())))
+                    .collect();
+                RespType::Array(Some(vals))
+            }
+            _ => wrong_type(),
+        },
+        None => RespType::Array(Some(Vec::new())),
+    })
 }
 
 fn wrong_type() -> RespType {
-    RespType::Error(
-        "WRONGTYPE Operation against a key holding the wrong kind of value".to_string(),
-    )
+    RespType::Error("WRONGTYPE Operation against a key holding the wrong kind of value".to_string())
 }
