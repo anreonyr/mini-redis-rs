@@ -1,10 +1,12 @@
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use tokio::time::Instant;
 
 static DB: LazyLock<Mutex<HashMap<String, Entry>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static VERSION_COUNTER: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StreamEntry {
@@ -44,11 +46,16 @@ pub struct Entry {
     pub value: Value,
     #[serde(skip)]
     pub expiry: Option<Instant>,
+    pub version: u64,
 }
 
 impl Entry {
     pub fn new(value: Value, expiry: Option<Instant>) -> Self {
-        Self { value, expiry }
+        Self {
+            value,
+            expiry,
+            version: VERSION_COUNTER.fetch_add(1, Ordering::Relaxed),
+        }
     }
 }
 
@@ -63,4 +70,15 @@ where
 pub fn flushdb() {
     let mut db = DB.lock().unwrap();
     db.clear();
+}
+
+/// Increment and return the next version number.
+pub fn bump_version() -> u64 {
+    VERSION_COUNTER.fetch_add(1, Ordering::Relaxed)
+}
+
+/// Get the current version of a key, or None if the key doesn't exist.
+pub fn key_version(key: &str) -> Option<u64> {
+    let db = DB.lock().unwrap();
+    db.get(key).map(|e| e.version)
 }

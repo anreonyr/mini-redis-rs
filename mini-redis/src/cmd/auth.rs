@@ -1,15 +1,35 @@
+use std::collections::HashMap;
+
+use crate::cmd::types::ParsedCmd;
 use crate::config;
 use crate::resp::RespType;
+
+#[derive(Clone)]
+pub struct TransactionState {
+    pub queue: Vec<ParsedCmd>,
+    pub watching: HashMap<String, u64>,
+}
+
+impl TransactionState {
+    pub fn new() -> Self {
+        Self {
+            queue: Vec::new(),
+            watching: HashMap::new(),
+        }
+    }
+}
 
 /// Per-connection authentication state.
 pub struct ConnectionState {
     authenticated: bool,
+    pub transaction: Option<TransactionState>,
 }
 
 impl ConnectionState {
     pub fn new() -> Self {
         Self {
             authenticated: false,
+            transaction: None,
         }
     }
 

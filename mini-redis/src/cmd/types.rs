@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 /// All arguments have been parsed and validated at this point.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ParsedCmd {
     Ping,
     Echo {
