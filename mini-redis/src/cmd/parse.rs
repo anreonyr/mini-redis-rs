@@ -861,6 +861,9 @@ impl ParsedCmd {
                     .ok_or_else(|| wrong_arg_count("auth"))?;
                 ParsedCmd::Auth { password }
             }
+            "SAVE" => ParsedCmd::Save,
+            "BGSAVE" => ParsedCmd::Bgsave,
+            "SHUTDOWN" => ParsedCmd::Shutdown,
             _ => return Err(CmdError::UnknownCommand),
         })
     }

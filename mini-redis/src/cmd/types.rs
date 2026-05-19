@@ -360,6 +360,9 @@ pub enum ParsedCmd {
     Auth {
         password: String,
     },
+    Bgsave,
+    Save,
+    Shutdown,
 }
 
 impl ParsedCmd {
@@ -454,6 +457,9 @@ impl ParsedCmd {
             ParsedCmd::Renamenx { .. } => "RENAMENX",
             ParsedCmd::Randomkey => "RANDOMKEY",
             ParsedCmd::Auth { .. } => "AUTH",
+            ParsedCmd::Bgsave => "BGSAVE",
+            ParsedCmd::Save => "SAVE",
+            ParsedCmd::Shutdown => "SHUTDOWN",
         }
     }
 }

@@ -1,6 +1,9 @@
+use std::collections::HashMap;
+
 use bytes::Bytes;
 
 use crate::config;
+use crate::db;
 use crate::registry;
 use crate::resp::RespType;
 
@@ -151,4 +154,53 @@ pub fn handle_config_set(parameter: &str, value: &str) -> RespType {
         }
         _ => RespType::Error("ERR unknown config parameter".to_string()),
     }
+}
+
+pub fn handle_save() -> RespType {
+    let path = config::with_config(|cfg| cfg.db_path());
+    match crate::persist::save(&path) {
+        Ok(()) => RespType::SimpleString("OK".to_string()),
+        Err(e) => RespType::Error(format!("ERR {}", e)),
+    }
+}
+
+pub fn handle_bgsave() -> RespType {
+    let path = config::with_config(|cfg| cfg.db_path());
+    // Clone data for background saving
+    let data = db::with_db(|db| {
+        let now = tokio::time::Instant::now();
+        let mut map: HashMap<String, db::Entry> = HashMap::new();
+        for (key, entry) in db.iter() {
+            if entry.expiry.is_some_and(|exp| now >= exp) {
+                continue;
+            }
+            map.insert(key.clone(), entry.clone());
+        }
+        map
+    });
+
+    tokio::spawn(async move {
+        let bytes = match bincode::serialize(&data) {
+            Ok(b) => b,
+            Err(e) => {
+                eprintln!("BGSAVE serialize error: {}", e);
+                return;
+            }
+        };
+        if let Err(e) = std::fs::write(&path, &bytes) {
+            eprintln!("BGSAVE write error: {}", e);
+        } else {
+            println!("BGSAVE completed to {}", path);
+        }
+    });
+
+    RespType::SimpleString("OK".to_string())
+}
+
+pub fn handle_shutdown() -> RespType {
+    let path = config::with_config(|cfg| cfg.db_path());
+    if let Err(e) = crate::persist::save(&path) {
+        return RespType::Error(format!("ERR {}", e));
+    }
+    std::process::exit(0);
 }

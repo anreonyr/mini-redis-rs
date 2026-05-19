@@ -439,6 +439,27 @@ pub fn init() {
         since_stage: 0,
         summary: "Authenticates the connection using a password",
     });
+    reg.register(CommandInfo {
+        name: "SAVE",
+        arity: 1,
+        category: "Server",
+        since_stage: 0,
+        summary: "Synchronously saves the dataset to disk",
+    });
+    reg.register(CommandInfo {
+        name: "BGSAVE",
+        arity: 1,
+        category: "Server",
+        since_stage: 0,
+        summary: "Asynchronously saves the dataset to disk in background",
+    });
+    reg.register(CommandInfo {
+        name: "SHUTDOWN",
+        arity: 1,
+        category: "Server",
+        since_stage: 0,
+        summary: "Synchronously saves the dataset to disk and shuts down",
+    });
     // More Key
     reg.register(CommandInfo {
         name: "RENAME",

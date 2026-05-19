@@ -174,5 +174,8 @@ pub async fn dispatch_command(
         ParsedCmd::Rename { key, newkey } => handlers::handle_rename(&key, &newkey),
         ParsedCmd::Renamenx { key, newkey } => handlers::handle_renamenx(&key, &newkey),
         ParsedCmd::Randomkey => handlers::handle_randomkey(),
+        ParsedCmd::Save => handlers::handle_save(),
+        ParsedCmd::Bgsave => handlers::handle_bgsave(),
+        ParsedCmd::Shutdown => handlers::handle_shutdown(),
     }
 }
