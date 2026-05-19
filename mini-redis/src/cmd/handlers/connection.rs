@@ -5,8 +5,10 @@ use bytes::Bytes;
 use crate::cmd::auth::{ConnectionState, TransactionState};
 use crate::config;
 use crate::db;
+use crate::pubsub;
 use crate::registry;
 use crate::resp::RespType;
+use tokio::sync::mpsc::unbounded_channel;
 
 pub fn handle_ping() -> RespType {
     RespType::SimpleString("PONG".to_string())
@@ -263,4 +265,45 @@ pub fn handle_watch(state: &mut ConnectionState, keys: &[String]) -> RespType {
 pub fn handle_unwatch(state: &mut ConnectionState) -> RespType {
     state.watching.clear();
     RespType::SimpleString("OK".to_string())
+}
+
+// ── Pub/Sub handlers ──
+
+pub fn handle_publish(channel: &str, message: &str) -> RespType {
+    let count = pubsub::publish(channel, message);
+    RespType::Integer(count as i64)
+}
+
+pub fn handle_subscribe(state: &mut ConnectionState, channels: &[String]) -> RespType {
+    let (tx, rx) = unbounded_channel();
+    let _count = pubsub::subscribe(tx, channels);
+
+    state.subscription = Some(crate::cmd::auth::SubscriptionState { rx });
+
+    // Return confirmation for the last channel subscribed
+    let last = channels.last().cloned().unwrap_or_else(|| "0".to_string());
+    RespType::Array(Some(vec![
+        RespType::BulkString(Some(Bytes::copy_from_slice(b"subscribe"))),
+        RespType::BulkString(Some(Bytes::copy_from_slice(last.as_bytes()))),
+        RespType::Integer(channels.len() as i64),
+    ]))
+}
+
+pub fn handle_unsubscribe(state: &mut ConnectionState, channels: &[String]) -> RespType {
+    // Since we don't have the sender reference in ConnectionState yet,
+    // we just clear the subscription. Real unsubscription from the
+    // global registry happens when the connection drops.
+    let channels_to_unsub = if channels.is_empty() {
+        state.subscription = None;
+        vec!["0".to_string()]
+    } else {
+        channels.to_vec()
+    };
+
+    let last = channels_to_unsub.last().cloned().unwrap_or_else(|| "0".to_string());
+    RespType::Array(Some(vec![
+        RespType::BulkString(Some(Bytes::copy_from_slice(b"unsubscribe"))),
+        RespType::BulkString(Some(Bytes::copy_from_slice(last.as_bytes()))),
+        RespType::Integer(0),
+    ]))
 }
